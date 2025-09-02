@@ -17,7 +17,7 @@ if (!API_BASE_URL) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 发送请求函数
+// 请求封装
 async function sendRequest(url, options = {}) {
   try {
     const response = await axios({ ...options, url });
@@ -43,8 +43,8 @@ bot.onText(/\/help/, (msg) => {
 /id [编号] - 按编号获取影片详情和磁力链接
 /star [编号] - 按编号获取演员详情
 /starsearch [关键词] - 按关键词搜索演员
-/starpage [编号] [页数] - 获取演员影片列表（分页，包含有无磁力链接）
-/latest - 获取最新影片（包含有无磁力链接）
+/starpage [编号] [页数] - 获取演员影片列表（分页）
+/latest - 获取最新影片
 `;
   bot.sendMessage(chatId, helpMessage);
 });
@@ -73,7 +73,7 @@ bot.onText(/\/search (.+)/, async (msg, match) => {
   }
 });
 
-// /id 指令（影片详情 + 磁力链接）
+// /id 指令
 bot.onText(/\/id (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const movieId = match[1].trim();
@@ -97,13 +97,17 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
 
     // 获取磁力链接
     try {
-      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
-      if (magnets && magnets.length > 0) {
-        magnets.slice(0, 3).forEach((m, idx) => {
-          const sizeStr = m.size || (m.numberSize ? (m.numberSize / 1024 / 1024 / 1024).toFixed(2) + 'GB' : '未知大小');
-          const dateStr = m.shareDate || '未知日期';
-          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n大小: ${sizeStr} | 上传: ${dateStr}\n`;
-        });
+      const gid = movie.gid;
+      const uc = movie.uc;
+      if (gid && uc !== undefined) {
+        const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${gid}&uc=${uc}`);
+        if (magnets && magnets.length > 0) {
+          magnets.slice(0, 3).forEach((m, idx) => {
+            message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
+          });
+        } else {
+          message += '【磁力】 无可用磁力链接\n';
+        }
       } else {
         message += '【磁力】 无可用磁力链接\n';
       }
@@ -130,7 +134,7 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
   }
 });
 
-// /star 指令（演员详情）
+// /star 指令
 bot.onText(/\/star (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const starId = match[1].trim();
@@ -140,22 +144,26 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
     const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
     const name = star.name || 'N/A';
     const birthday = star.birthday || 'N/A';
-    const height = star.height || 'N/A';
-    const measurements = star.measurements || 'N/A';
-    const aliases = star.aliases?.join(', ') || 'N/A';
-    const image = star.img || null;
+    const height = star.height || star.height || 'N/A';
+    const bust = star.bust || 'N/A';
+    const waistline = star.waistline || 'N/A';
+    const hipline = star.hipline || 'N/A';
+    const birthplace = star.birthplace || 'N/A';
+    const hobby = star.hobby || 'N/A';
+    const avatar = star.avatar || null;
 
     let message = `
 【姓名】 ${name}
 【生日】 ${birthday}
 【身高】 ${height}
-【三围】 ${measurements}
-【别名】 ${aliases}
+【三围】 ${bust}-${waistline}-${hipline}
+【出生地】 ${birthplace}
+【爱好】 ${hobby}
 【编号】 ${starId}
 `;
 
-    if (image) {
-      await bot.sendPhoto(chatId, image, { caption: message });
+    if (avatar) {
+      await bot.sendPhoto(chatId, avatar, { caption: message });
     } else {
       await bot.sendMessage(chatId, message);
     }
@@ -165,22 +173,19 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
   }
 });
 
-// /starsearch 指令（关键词搜索演员）
+// /starsearch 指令
 bot.onText(/\/starsearch (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
-  if (!keyword) return bot.sendMessage(chatId, '请提供演员关键词，例如: /starsearch 三上');
+  if (!keyword) return bot.sendMessage(chatId, '请提供演员关键词');
 
   try {
-    // 调用影片搜索接口
-    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { 
-      params: { keyword, magnet: 'all' } 
+    const data = await sendRequest(`${API_BASE_URL}/movies/search`, {
+      params: { keyword, magnet: 'all' }
     });
-
     const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
 
-    // 收集演员并去重，只保留名字包含关键词的
     const actorMap = new Map();
     movies.forEach(movie => {
       movie.stars?.forEach(star => {
@@ -205,7 +210,7 @@ bot.onText(/\/starsearch (.+)/, async (msg, match) => {
   }
 });
 
-// /starpage 指令（演员影片列表）
+// /starpage 指令
 bot.onText(/\/starpage (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const [starId, page = 1] = match[1].split(' ');
@@ -229,7 +234,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
   }
 });
 
-//// /latest 指令（最新影片）
+// /latest 指令
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   try {
@@ -248,7 +253,7 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// 样品截图分页显示
+// 样品截图分页
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
@@ -296,11 +301,3 @@ bot.on('message', (msg) => {
 });
 
 module.exports = bot;
-
-
-
-
-
-
-        
-        
