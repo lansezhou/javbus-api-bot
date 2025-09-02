@@ -86,11 +86,12 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
   }
 });
 
-// 样品截图翻页按钮
+// 样品截图翻页按钮 & 女优头像按钮
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
+  // 样品截图翻页
   if (data.startsWith('sample_')) {
     const parts = data.split('_');
     if (parts.length < 3) {
@@ -137,6 +138,23 @@ bot.on('callback_query', async (query) => {
 
     await bot.answerCallbackQuery(query.id);
   }
+
+  // 女优头像按钮
+  if (data.startsWith('star_avatar_')) {
+    const starId = data.replace('star_avatar_', '');
+    try {
+      const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
+      if (star && star.avatar) {
+        await bot.sendPhoto(chatId, star.avatar, { caption: `👩 ${star.name}`, parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, '未找到女优头像');
+      }
+    } catch (err) {
+      console.error(`[ERROR] 获取女优头像失败: ${err.message}`);
+      await bot.sendMessage(chatId, '获取女优头像出错');
+    }
+    await bot.answerCallbackQuery(query.id);
+  }
 });
 
 // /latest 命令: 获取最新影片前15个
@@ -170,14 +188,13 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// /stars 命令: 根据女优名字搜索影片
+// /stars 命令: 根据女优名字搜索影片，并增加“查看头像”按钮
 bot.onText(/\/stars (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
   console.log(`[INFO] 用户 ${msg.from.username} 搜索女优: ${keyword}`);
 
   try {
-    // 调用搜索接口
     const data = await sendRequest(`${API_BASE_URL}/movies/search?keyword=${encodeURIComponent(keyword)}`);
     const movies = data.movies || [];
     if (movies.length === 0) {
@@ -196,6 +213,19 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
 
       await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     }
+
+    // 在最后发送按钮，点击获取女优头像
+    const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
+    if (starId) {
+      await bot.sendMessage(chatId, `查看女优头像`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
+          ]
+        }
+      });
+    }
+
   } catch (err) {
     console.error(`[ERROR] 搜索女优失败: ${err.message}`);
     await bot.sendMessage(chatId, `搜索女优 ${keyword} 出错`);
