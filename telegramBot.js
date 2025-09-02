@@ -1,168 +1,121 @@
 // telegramBot.js
-require("dotenv").config();
-const TelegramBot = require("node-telegram-bot-api");
+const { Telegraf } = require("telegraf");
 const axios = require("axios");
 
-// ================= 环境变量配置 =================
+// ====== 环境变量 ======
 const BOT_TOKEN = process.env.TG_BOT_TOKEN;
-const API_BASE = process.env.API_BASE_URL || "http://localhost:8922/api";
+const API_BASE_URL = process.env.API_BASE_URL;
 
-// 检查必要环境变量
-if (!TG_BOT_TOKEN || !API_BASE_URL) {
-  console.error(
-    "[FATAL] 缺少必要的环境变量，请检查 TG_BOT_TOKEN 和 API_BASE_URL 是否已配置"
-  );
+if (!BOT_TOKEN || !API_BASE_URL) {
+  console.error("[FATAL] 请设置环境变量 TG_BOT_TOKEN 和 API_BASE_URL");
   process.exit(1);
 }
 
-console.log("[INFO] 使用的 API_BASE_URL:", API_BASE_URL);
+const bot = new Telegraf(BOT_TOKEN);
 
-// ================= 初始化 Bot =================
-const bot = new TelegramBot(TG_BOT_TOKEN, { polling: true });
-
-// ================= 通用请求函数 =================
-async function sendRequest(apiUrl) {
+// ====== 通用请求函数 ======
+async function sendRequest(endpoint, params = {}) {
+  const url = `${API_BASE_URL}${endpoint}`;
   try {
-    const response = await axios.get(apiUrl);
-    return response.data;
-  } catch (error) {
-    console.error(`[ERROR] 请求 ${apiUrl} 出错:`, error.message);
-    throw new Error(`API请求失败: ${error.message}`);
+    const res = await axios.get(url, { params });
+    return res.data;
+  } catch (err) {
+    console.error(`[ERROR] 请求 ${url} 出错:`, err.message);
+    throw new Error("API请求失败");
   }
 }
 
-// ================= 命令处理 =================
+// ====== 命令 ======
 
 // /start
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    `欢迎使用 Javbus API Bot 🎬\n\n可用命令:\n
-/help - 查看帮助
-/movies - 获取影片列表
-/search <关键词> - 搜索影片
-/id <番号> - 获取影片详情
-/magnets <番号> - 获取磁力链接
-/star <演员ID> - 获取演员详情`
-  );
+bot.start((ctx) => {
+  ctx.reply("欢迎使用 JAV 搜索机器人！输入 /help 查看命令帮助。");
 });
 
 // /help
-bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(
-    msg.chat.id,
-    `📌 命令列表:\n
-/movies - 获取第一页影片列表
-/movies <页码> - 获取指定页码的影片
-/search <关键词> - 搜索影片（返回全部结果）
-/id <番号> - 获取影片详情
-/magnets <番号> - 获取影片磁力链接
-/star <演员ID> - 获取演员详情`
-  );
+bot.command("help", (ctx) => {
+  ctx.reply(`
+可用命令:
+/movies [page] 获取影片列表
+/search <关键词> 搜索影片
+/id <番号> 获取影片详情
+/magnets <番号> 获取磁力链接
+/star <演员ID> 获取演员详情
+  `);
 });
 
-// /movies [page]
-bot.onText(/\/movies\s*(\d+)?/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const page = match[1] || 1;
-  const apiUrl = `${API_BASE}/movies?page=${page}&magnet=all`;
-
+// /movies
+bot.command("movies", async (ctx) => {
+  const [, page = 1] = ctx.message.text.split(" ");
   try {
-    const data = await sendRequest(apiUrl);
-    if (data && data.data && data.data.length > 0) {
-      const movies = data.data
-        .map((m) => `🎬 ${m.title}\n番号: ${m.id}`)
-        .join("\n\n");
-      bot.sendMessage(chatId, `第 ${page} 页影片:\n\n${movies}`);
-    } else {
-      bot.sendMessage(chatId, "没有找到影片。");
-    }
-  } catch (err) {
-    bot.sendMessage(chatId, `❌ 获取影片失败: ${err.message}`);
+    const data = await sendRequest("/api/movies", { page, magnet: "all" });
+    if (!data || !data.length) return ctx.reply("没有找到影片。");
+    const msg = data.map((m) => `🎬 ${m.title}\n番号: ${m.id}`).join("\n\n");
+    ctx.reply(msg);
+  } catch {
+    ctx.reply("❌ 获取影片失败");
   }
 });
 
-// /search <keyword>
-bot.onText(/\/search (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const keyword = match[1].trim();
-  const apiUrl = `${API_BASE}/movies/search?keyword=${encodeURIComponent(
-    keyword
-  )}&magnet=all`;
-
+// /search
+bot.command("search", async (ctx) => {
+  const keyword = ctx.message.text.replace("/search", "").trim();
+  if (!keyword) return ctx.reply("请输入关键词，例如 /search 三上");
   try {
-    const data = await sendRequest(apiUrl);
-    if (data && data.data && data.data.length > 0) {
-      const results = data.data
-        .map((m) => `🎬 ${m.title}\n番号: ${m.id}`)
-        .join("\n\n");
-      bot.sendMessage(chatId, `搜索结果 (${keyword}):\n\n${results}`);
-    } else {
-      bot.sendMessage(chatId, "没有找到相关影片。");
-    }
-  } catch (err) {
-    bot.sendMessage(chatId, `❌ 搜索失败: ${err.message}`);
+    const data = await sendRequest("/api/movies/search", {
+      keyword,
+      magnet: "all",
+    });
+    if (!data || !data.length) return ctx.reply("没有找到相关影片。");
+    const msg = data
+      .map((m) => `🎬 ${m.title}\n番号: ${m.id}`)
+      .join("\n\n");
+    ctx.reply(msg);
+  } catch {
+    ctx.reply("❌ 搜索失败");
   }
 });
 
-// /id <movieId>
-bot.onText(/\/id (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const movieId = match[1].trim();
-  const apiUrl = `${API_BASE}/movies/${movieId}`;
-
+// /id
+bot.command("id", async (ctx) => {
+  const movieId = ctx.message.text.replace("/id", "").trim();
+  if (!movieId) return ctx.reply("请输入番号，例如 /id SSIS-406");
   try {
-    const data = await sendRequest(apiUrl);
-    bot.sendMessage(
-      chatId,
-      `🎬 ${data.title}\n番号: ${data.id}\n发行日期: ${data.date}\n演员: ${
-        data.actors?.join(", ") || "未知"
-      }`
-    );
-  } catch (err) {
-    bot.sendMessage(chatId, `❌ 获取影片详情失败: ${err.message}`);
+    const data = await sendRequest(`/api/movies/${movieId}`);
+    ctx.reply(`🎬 ${data.title}\n番号: ${data.id}`);
+  } catch {
+    ctx.reply("❌ 获取影片详情失败");
   }
 });
 
-// /magnets <movieId>
-bot.onText(/\/magnets (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const movieId = match[1].trim();
-  const apiUrl = `${API_BASE}/magnets/${movieId}?sortBy=date&sortOrder=desc`;
-
+// /magnets
+bot.command("magnets", async (ctx) => {
+  const movieId = ctx.message.text.replace("/magnets", "").trim();
+  if (!movieId) return ctx.reply("请输入番号，例如 /magnets SSNI-730");
   try {
-    const data = await sendRequest(apiUrl);
-    if (data && data.data && data.data.length > 0) {
-      const magnets = data.data
-        .slice(0, 5)
-        .map((m) => `🧲 ${m.link}\n大小: ${m.size}`)
-        .join("\n\n");
-      bot.sendMessage(chatId, `磁力链接 (前5个):\n\n${magnets}`);
-    } else {
-      bot.sendMessage(chatId, "没有找到磁力链接。");
-    }
-  } catch (err) {
-    bot.sendMessage(chatId, `❌ 获取磁力链接失败: ${err.message}`);
+    const data = await sendRequest(`/api/magnets/${movieId}`);
+    if (!data || !data.length) return ctx.reply("没有找到磁力链接。");
+    const msg = data
+      .map((m) => `💾 ${m.name}\n磁链: ${m.link}`)
+      .join("\n\n");
+    ctx.reply(msg);
+  } catch {
+    ctx.reply("❌ 获取磁力失败");
   }
 });
 
-// /star <starId>
-bot.onText(/\/star (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const starId = match[1].trim();
-  const apiUrl = `${API_BASE}/stars/${starId}`;
-
+// /star
+bot.command("star", async (ctx) => {
+  const starId = ctx.message.text.replace("/star", "").trim();
+  if (!starId) return ctx.reply("请输入演员ID，例如 /star 2xi");
   try {
-    const data = await sendRequest(apiUrl);
-    bot.sendMessage(
-      chatId,
-      `👩‍🎤 演员: ${data.name}\nID: ${starId}\n生日: ${
-        data.birthday || "未知"
-      }\n三围: ${data.measurements || "未知"}`
-    );
-  } catch (err) {
-    bot.sendMessage(chatId, `❌ 获取演员详情失败: ${err.message}`);
+    const data = await sendRequest(`/api/stars/${starId}`);
+    ctx.reply(`🌟 ${data.name}\nID: ${starId}`);
+  } catch {
+    ctx.reply("❌ 获取演员详情失败");
   }
 });
 
-console.log("[INFO] Bot 已启动，等待指令中...");
+// ====== 启动 ======
+bot.launch();
+console.log(`[INFO] Bot 已启动，API: ${API_BASE_URL}`);
