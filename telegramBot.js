@@ -139,14 +139,18 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
     const name = star.name || 'N/A';
     const birthday = star.birthday || 'N/A';
     const height = star.height || 'N/A';
-    const measurements = `${star.bust || ''}-${star.waistline || ''}-${star.hipline || ''}` || 'N/A';
+    const bust = star.bust || 'N/A';
+    const waistline = star.waistline || 'N/A';
+    const hipline = star.hipline || 'N/A';
+    const hobbies = star.hobby || 'N/A';
     const image = star.avatar || null;
 
     let message = `
 【姓名】 ${name}
 【生日】 ${birthday}
 【身高】 ${height}
-【三围】 ${measurements}
+【三围】 ${bust}/${waistline}/${hipline}
+【爱好】 ${hobbies}
 【编号】 ${starId}
 `;
 
@@ -161,14 +165,13 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
   }
 });
 
-// /starsearch 指令（关键词搜索演员）
+// /starsearch 指令（关键词搜索演员，使用真实演员 ID）
 bot.onText(/\/starsearch (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
   if (!keyword) return bot.sendMessage(chatId, '请提供演员关键词，例如: /starsearch 三上');
 
   try {
-    // 调用影片搜索接口
     const data = await sendRequest(`${API_BASE_URL}/movies/search`, { 
       params: { keyword, magnet: 'all' } 
     });
@@ -176,24 +179,15 @@ bot.onText(/\/starsearch (.+)/, async (msg, match) => {
     const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
 
-    // 收集演员并去重：先看 stars 字段，如果为空则从 title 中提取
+    // 收集演员并去重，保证使用真实 ID
     const actorMap = new Map();
     movies.forEach(movie => {
       if (movie.stars && movie.stars.length > 0) {
         movie.stars.forEach(star => {
           if (star.name.includes(keyword)) {
-            actorMap.set(star.id, star.name);
+            actorMap.set(star.id, star.name); // 使用真实演员 ID
           }
         });
-      } else {
-        // 从 title 中匹配演员名
-        const regex = new RegExp(keyword, 'g');
-        const matches = movie.title.match(regex);
-        if (matches) {
-          // 用 title 中关键词做 name，id 用 movieId + 名称做简化
-          const id = `${movie.id}_${keyword}`;
-          actorMap.set(id, keyword);
-        }
       }
     });
 
@@ -227,7 +221,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
 
     let message = `演员 ${starId} 的影片列表（第 ${page} 页）:\n`;
     movies.forEach(m => {
-      message += `\n标题: ${m.title}\n编号: ${m.id}\n`;
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.date}\n`;
     });
     bot.sendMessage(chatId, message);
   } catch (err) {
