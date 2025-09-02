@@ -179,7 +179,7 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// /stars 命令
+// /stars 命令（改为先发送列表，再单独发送按钮）
 bot.onText(/\/stars (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -194,31 +194,29 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
     }
 
     const results = movies.slice(0, 15);
-    const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
 
-    // 拼接影片列表消息
-    let text = '';
+    // 先发送影片列表
     for (const movie of results) {
-      text += `🎬 <b>${movie.title}</b>\n`;
+      let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
       text += `日期: ${movie.date || 'N/A'}\n`;
       if (movie.tags && movie.tags.length > 0) {
         text += `标签: ${movie.tags.join(', ')}\n`;
       }
-      text += '\n';
+      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     }
 
-    // 一条消息发送列表 + 按钮
-    const replyMarkup = starId ? {
-      inline_keyboard: [
-        [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
-      ]
-    } : undefined;
-
-    await bot.sendMessage(chatId, text || '未找到影片', {
-      parse_mode: 'HTML',
-      reply_markup: replyMarkup
-    });
+    // 单独发送按钮
+    const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
+    if (starId) {
+      await bot.sendMessage(chatId, `查看女优头像`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
+          ]
+        }
+      });
+    }
 
   } catch (err) {
     console.error(`[ERROR] 搜索女优失败: ${err.message}`);
