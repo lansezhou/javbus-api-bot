@@ -2,7 +2,7 @@
 FROM node:20-alpine
 
 # 设置环境变量（可在 docker run 或 CI/CD 时覆盖）
-ENV TELEGRAM_TOKEN=123456789:xxxxxxxxxxxxxxxxxxxxxx
+ENV TG_BOT_TOKEN=123456789:xxxxxxxxxxxxxxxxxxxxxx
 ENV API_BASE_URL=https://xyz.xyz.xyz/api
 ENV PORT=3033
 
