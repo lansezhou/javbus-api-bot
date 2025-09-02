@@ -1,227 +1,168 @@
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
+// telegramBot.js
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
+const axios = require("axios");
 
-// 从环境变量读取 Token 和 API 地址
-const token = process.env.TG_BOT_TOKEN;
-const API_BASE_URL = process.env.API_BASE_URL;
+// ================= 环境变量配置 =================
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const API_BASE = process.env.API_BASE || "http://localhost:8922/api";
 
-if (!token) {
-  console.error('[ERROR] TG_BOT_TOKEN 未设置');
+// 检查必要环境变量
+if (!BOT_TOKEN || !API_BASE) {
+  console.error(
+    "[FATAL] 缺少必要的环境变量，请检查 BOT_TOKEN 和 API_BASE 是否已配置"
+  );
   process.exit(1);
 }
 
-if (!API_BASE_URL) {
-  console.error('[ERROR] API_BASE_URL 未设置');
-  process.exit(1);
-}
+console.log("[INFO] 使用的 API_BASE:", API_BASE);
 
-const bot = new TelegramBot(token, { polling: true });
+// ================= 初始化 Bot =================
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-console.log('[INFO] 本地 API 在线，Bot 已启动');
-
-// 发送请求的函数
-async function sendRequest(url, options = {}) {
+// ================= 通用请求函数 =================
+async function sendRequest(apiUrl) {
   try {
-    const response = await axios({ ...options, url });
+    const response = await axios.get(apiUrl);
     return response.data;
   } catch (error) {
-    console.error(`[ERROR] 请求 ${url} 出错:`, error);
-    throw error;
+    console.error(`[ERROR] 请求 ${apiUrl} 出错:`, error.message);
+    throw new Error(`API请求失败: ${error.message}`);
   }
 }
 
-// /start 指令
+// ================= 命令处理 =================
+
+// /start
 bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, '欢迎使用 @avgifbusbot！使用 /help 查看可用命令。');
+  bot.sendMessage(
+    msg.chat.id,
+    `欢迎使用 Javbus API Bot 🎬\n\n可用命令:\n
+/help - 查看帮助
+/movies - 获取影片列表
+/search <关键词> - 搜索影片
+/id <番号> - 获取影片详情
+/magnets <番号> - 获取磁力链接
+/star <演员ID> - 获取演员详情`
+  );
 });
 
-// /help 指令
+// /help
 bot.onText(/\/help/, (msg) => {
-  const chatId = msg.chat.id;
-  const helpMessage = `
-可用命令:
-/search [关键词] - 按关键词搜索影片
-/id [编号] - 按编号获取影片详情和磁力链接
-/starsearch [关键词] - 按关键词搜索影片及演员
-/starpage [编号] [页数] - 获取演员影片列表（分页）
-/latest - 获取最新影片
-`;
-  bot.sendMessage(chatId, helpMessage);
+  bot.sendMessage(
+    msg.chat.id,
+    `📌 命令列表:\n
+/movies - 获取第一页影片列表
+/movies <页码> - 获取指定页码的影片
+/search <关键词> - 搜索影片（返回全部结果）
+/id <番号> - 获取影片详情
+/magnets <番号> - 获取影片磁力链接
+/star <演员ID> - 获取演员详情`
+  );
 });
 
-// /search 指令
+// /movies [page]
+bot.onText(/\/movies\s*(\d+)?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const page = match[1] || 1;
+  const apiUrl = `${API_BASE}/movies?page=${page}&magnet=all`;
+
+  try {
+    const data = await sendRequest(apiUrl);
+    if (data && data.data && data.data.length > 0) {
+      const movies = data.data
+        .map((m) => `🎬 ${m.title}\n番号: ${m.id}`)
+        .join("\n\n");
+      bot.sendMessage(chatId, `第 ${page} 页影片:\n\n${movies}`);
+    } else {
+      bot.sendMessage(chatId, "没有找到影片。");
+    }
+  } catch (err) {
+    bot.sendMessage(chatId, `❌ 获取影片失败: ${err.message}`);
+  }
+});
+
+// /search <keyword>
 bot.onText(/\/search (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const query = match[1];
+  const keyword = match[1].trim();
+  const apiUrl = `${API_BASE}/movies/search?keyword=${encodeURIComponent(
+    keyword
+  )}&magnet=all`;
+
   try {
-    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { params: { keyword: query } });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) {
-      return bot.sendMessage(chatId, '未找到影片。');
+    const data = await sendRequest(apiUrl);
+    if (data && data.data && data.data.length > 0) {
+      const results = data.data
+        .map((m) => `🎬 ${m.title}\n番号: ${m.id}`)
+        .join("\n\n");
+      bot.sendMessage(chatId, `搜索结果 (${keyword}):\n\n${results}`);
+    } else {
+      bot.sendMessage(chatId, "没有找到相关影片。");
     }
-    let message = '搜索结果:\n';
-    movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.date}\n`;
-    });
-    bot.sendMessage(chatId, message);
-  } catch (error) {
-    console.error(`[ERROR] /search 调用 API 出错: ${API_BASE_URL}/movies/search`, error);
-    bot.sendMessage(chatId, '从 API 获取数据时出错');
+  } catch (err) {
+    bot.sendMessage(chatId, `❌ 搜索失败: ${err.message}`);
   }
 });
 
-// /id 指令
+// /id <movieId>
 bot.onText(/\/id (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const movieId = match[1];
-  
+  const movieId = match[1].trim();
+  const apiUrl = `${API_BASE}/movies/${movieId}`;
+
   try {
-    const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
-    const title = movie.title || 'N/A';
-    const date = movie.date || 'N/A';
-    const tags = movie.tags ? movie.tags.join(', ') : 'N/A';
-    const stars = movie.stars ? movie.stars.map(s => s.name).join(', ') : 'N/A';
-    const image = movie.img || null;
+    const data = await sendRequest(apiUrl);
+    bot.sendMessage(
+      chatId,
+      `🎬 ${data.title}\n番号: ${data.id}\n发行日期: ${data.date}\n演员: ${
+        data.actors?.join(", ") || "未知"
+      }`
+    );
+  } catch (err) {
+    bot.sendMessage(chatId, `❌ 获取影片详情失败: ${err.message}`);
+  }
+});
 
-    let message = `
-【标题】 <code>${title}</code>
-【编号】 <code>${movieId}</code>
-【日期】 <code>${date}</code>
-【演员】 ${stars}
-【标签】 <code>${tags}</code>
-`;
+// /magnets <movieId>
+bot.onText(/\/magnets (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const movieId = match[1].trim();
+  const apiUrl = `${API_BASE}/magnets/${movieId}?sortBy=date&sortOrder=desc`;
 
-    // 获取磁力链接
-    try {
-      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
-      if (magnets && magnets.length > 0) {
-        magnets.slice(0, 3).forEach((magnet, idx) => {
-          message += `【磁力链接 ${idx + 1}】 <code>${magnet.link}</code>\n`;
-        });
-      } else {
-        message += '【磁力】 无可用磁力链接\n';
-      }
-    } catch (err) {
-      console.error(`[ERROR] /id 获取磁力链接出错: ${API_BASE_URL}/magnets/${movieId}`, err);
-      message += '【磁力】 获取磁力链接出错\n';
-    }
-
-    const options = {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '预览截图', callback_data: `sample_${movieId}_0` }]]
-      }
-    };
-
-    if (image) {
-      await bot.sendPhoto(chatId, image, { caption: message, ...options });
+  try {
+    const data = await sendRequest(apiUrl);
+    if (data && data.data && data.data.length > 0) {
+      const magnets = data.data
+        .slice(0, 5)
+        .map((m) => `🧲 ${m.link}\n大小: ${m.size}`)
+        .join("\n\n");
+      bot.sendMessage(chatId, `磁力链接 (前5个):\n\n${magnets}`);
     } else {
-      await bot.sendMessage(chatId, message, options);
+      bot.sendMessage(chatId, "没有找到磁力链接。");
     }
-
   } catch (err) {
-    console.error(`[ERROR] /id 调用 API 出错: ${API_BASE_URL}/movies/${movieId}`, err);
-    bot.sendMessage(chatId, '从 API 获取影片数据时出错.');
+    bot.sendMessage(chatId, `❌ 获取磁力链接失败: ${err.message}`);
   }
 });
 
-// /starsearch 指令（改成搜索影片及演员）
-bot.onText(/\/starsearch (.+)/, async (msg, match) => {
+// /star <starId>
+bot.onText(/\/star (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const query = match[1];
+  const starId = match[1].trim();
+  const apiUrl = `${API_BASE}/stars/${starId}`;
+
   try {
-    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { params: { keyword: query } });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) return bot.sendMessage(chatId, '未找到影片或演员');
-
-    let message = '搜索结果:\n';
-    movies.forEach(movie => {
-      const stars = movie.stars ? movie.stars.map(s => s.name).join(', ') : 'N/A';
-      message += `\n影片: ${movie.title}\n演员: ${stars}\n编号: ${movie.id}\n`;
-    });
-    bot.sendMessage(chatId, message);
-
+    const data = await sendRequest(apiUrl);
+    bot.sendMessage(
+      chatId,
+      `👩‍🎤 演员: ${data.name}\nID: ${starId}\n生日: ${
+        data.birthday || "未知"
+      }\n三围: ${data.measurements || "未知"}`
+    );
   } catch (err) {
-    console.error(`[ERROR] /starsearch 调用 API 出错: ${API_BASE_URL}/movies/search`, err);
-    bot.sendMessage(chatId, '从 API 获取数据时出错，请稍后重试。');
+    bot.sendMessage(chatId, `❌ 获取演员详情失败: ${err.message}`);
   }
 });
 
-// /starpage 指令
-bot.onText(/\/starpage (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const [starId, page] = match[1].split(' ');
-  try {
-    const data = await sendRequest(`${API_BASE_URL}/stars/${starId}/movies`, { params: { page } });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) return bot.sendMessage(chatId, '未找到影片');
-    let message = '演员影片列表:\n';
-    movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n`;
-    });
-    bot.sendMessage(chatId, message);
-  } catch (err) {
-    console.error(`[ERROR] /starpage 调用 API 出错: ${API_BASE_URL}/stars/${starId}/movies`, err);
-    bot.sendMessage(chatId, '从 API 获取演员影片数据时出错');
-  }
-});
-
-// /latest 指令
-bot.onText(/\/latest/, async (msg) => {
-  const chatId = msg.chat.id;
-  try {
-    const data = await sendRequest(`${API_BASE_URL}/movies`);
-    const movies = data.movies;
-    if (!movies || movies.length === 0) return bot.sendMessage(chatId, '未找到最新影片');
-    let message = '最新影片:\n';
-    movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.date}\n`;
-    });
-    bot.sendMessage(chatId, message);
-  } catch (err) {
-    console.error(`[ERROR] /latest 调用 API 出错: ${API_BASE_URL}/movies`, err);
-    bot.sendMessage(chatId, '从 API 获取最新影片数据时出错');
-  }
-});
-
-// 未识别命令
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  if (!msg.text.startsWith('/')) {
-    bot.sendMessage(chatId, '无法识别的命令。使用 /help 查看可用命令。');
-  }
-});
-
-// 样品图像分页
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-  if (data.startsWith('sample_')) {
-    const [_, movieId, pageStr] = data.split('_');
-    const page = parseInt(pageStr);
-    try {
-      const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
-      if (!movie.samples || movie.samples.length === 0) {
-        await bot.sendMessage(chatId, '没有可用截图。');
-        return;
-      }
-      const start = page * 5;
-      const end = Math.min(start + 5, movie.samples.length);
-      const samples = movie.samples.slice(start, end);
-      const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
-      await bot.sendMediaGroup(chatId, mediaGroup);
-      if (end < movie.samples.length) {
-        await bot.sendMessage(chatId, '查看更多截图', {
-          reply_markup: { inline_keyboard: [[{ text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }]] }
-        });
-      }
-    } catch (err) {
-      console.error(`[ERROR] 获取截图出错: ${API_BASE_URL}/movies/${movieId}`, err);
-      await bot.sendMessage(chatId, '获取截图时出错。');
-    }
-    await bot.answerCallbackQuery(query.id);
-  }
-});
-
-module.exports = bot;
+console.log("[INFO] Bot 已启动，等待指令中...");
