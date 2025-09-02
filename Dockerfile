@@ -1,18 +1,15 @@
-# 使用轻量 Node.js 基础镜像
 FROM node:20-alpine
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制依赖文件并安装
 COPY package*.json ./
 RUN npm install --production
 
-# 复制项目所有代码
 COPY . .
 
-# 设置默认环境变量（可覆盖）
+# 模板环境变量，可在构建或运行时覆盖
 ENV NODE_ENV=production
+ENV TELEGRAM_TOKEN=YOUR_TELEGRAM_TOKEN_HERE
+ENV API_BASE_URL=https://your-api-url-here
 
-# 启动服务（看项目入口是 index.js）
 CMD ["node", "index.js"]
