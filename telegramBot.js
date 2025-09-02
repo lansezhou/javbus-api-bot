@@ -1,21 +1,13 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-// 使用固定环境变量
-const token = process.env.TG_BOT_TOKEN;
+const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
-
-if (!token || !API_BASE_URL) {
-  console.error("请设置环境变量 TG_BOT_TOKEN 和 API_BASE_URL");
-  process.exit(1);
-}
-
-const bot = new TelegramBot(token, { polling: true });
 
 // 发送请求的函数
 async function sendRequest(url, options = {}) {
   try {
-    const response = await axios({ url, ...options });
+    const response = await axios({ ...options, url });
     return response.data;
   } catch (error) {
     console.error(`[ERROR] 请求 ${url} 出错:`, error.message);
@@ -23,103 +15,123 @@ async function sendRequest(url, options = {}) {
   }
 }
 
-// /start 指令
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, '欢迎使用 Javbus Bot！使用 /help 查看可用命令。');
-});
-
-// /help 指令
-bot.onText(/\/help/, (msg) => {
-  const chatId = msg.chat.id;
-  const helpMessage = `
-可用命令:
-/c [番号] - 通过番号查询影片全部信息
-`;
-  bot.sendMessage(chatId, helpMessage);
-});
-
-// /c [番号] 命令
+// /c 命令: 查询影片信息
 bot.onText(/\/c (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const movieId = match[1].trim();
+  console.log(`[INFO] 用户 ${msg.from.username} 查询番号: ${movieId}`);
 
   try {
-    // 获取影片详情
     const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
-
-    const title = movie.title || 'N/A';
-    const date = movie.date || 'N/A';
-    const videoLength = movie.videoLength || 'N/A';
-    const tags = movie.tags ? movie.tags.join(', ') : 'N/A';
-    const genres = movie.genres ? movie.genres.map(g => g.name).join(', ') : 'N/A';
-    const stars = movie.stars ? movie.stars.map(s => s.name).join(', ') : 'N/A';
-    const image = movie.img || null;
-
-    let message = `
-【标题】 <code>${title}</code>
-【番号】 <code>${movieId}</code>
-【日期】 <code>${date}</code>
-【时长】 <code>${videoLength} 分钟</code>
-【分类】 <code>${genres}</code>
-【演员】 <code>${stars}</code>
-【标签】 <code>${tags}</code>
-`;
-
-    // 获取磁力链接（如果有 gid/uc）
-    let magnets = [];
-    if (movie.gid && movie.uc) {
-      try {
-        magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`, {
-          params: { gid: movie.gid, uc: movie.uc }
-        });
-      } catch (err) {
-        console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
-      }
+    if (!movie || !movie.id) {
+      bot.sendMessage(chatId, `未能获取番号 ${movieId} 的影片信息`);
+      return;
     }
 
-    if (magnets && magnets.length > 0) {
-      magnets.slice(0, 3).forEach((magnet, index) => {
-        message += `【磁力链接 ${index + 1}】 <code>${magnet.link}</code> (${magnet.size}${magnet.isHD ? ' HD' : ''}${magnet.hasSubtitle ? ' 字幕' : ''})\n`;
+    // 基本信息
+    let message = `🎬 <b>${movie.title}</b>\n`;
+    message += `编号: <code>${movie.id}</code>\n`;
+    message += `日期: ${movie.date || 'N/A'}\n`;
+    if (movie.stars && movie.stars.length > 0) {
+      message += `演员: ${movie.stars.map(s => s.name).join(' | ')}\n`;
+    }
+    if (movie.tags && movie.tags.length > 0) {
+      message += `标签: ${movie.tags.join(', ')}\n`;
+    }
+
+    // 发送基础信息（文字）
+    await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+
+    // 获取磁力链接
+    try {
+      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`, {
+        params: { gid: movie.gid, uc: movie.uc }
       });
-    } else {
-      message += '【磁力链接】暂无可用磁力链接\n';
-    }
-
-    // 发送封面图片 + 信息
-    const options = {
-      parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: []
+      if (magnets && magnets.length > 0) {
+        let magnetMsg = '🧲 <b>磁力链接:</b>\n';
+        magnets.slice(0, 5).forEach((m, idx) => {
+          magnetMsg += `${idx + 1}. <code>${m.link}</code> (${m.size})\n`;
+        });
+        await bot.sendMessage(chatId, magnetMsg, { parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, '🧲 未找到磁力链接');
       }
-    };
-
-    if (image) {
-      await bot.sendPhoto(chatId, image, { caption: message, ...options });
-    } else {
-      await bot.sendMessage(chatId, message, options);
+    } catch (err) {
+      console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
+      await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
     }
 
-    // 发送样品截图（最多前5张）
+    // 样品截图
     if (movie.samples && movie.samples.length > 0) {
       const mediaGroup = movie.samples.slice(0, 5).map(sample => ({
         type: 'photo',
         media: sample.src
       }));
       await bot.sendMediaGroup(chatId, mediaGroup);
+      if (movie.samples.length > 5) {
+        await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看更多`, {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '下一页截图', callback_data: `sample_${movieId}_1` }
+            ]]
+          }
+        });
+      }
     }
 
   } catch (error) {
     console.error(`[ERROR] 获取影片 ${movieId} 失败: ${error.message}`);
-    bot.sendMessage(chatId, `未能获取番号 <code>${movieId}</code> 的影片信息`, { parse_mode: "HTML" });
+    await bot.sendMessage(chatId, `未能获取番号 ${movieId} 的影片信息`);
   }
 });
 
-bot.on('message', (msg) => {
+// 样品截图翻页按钮
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+  if (data.startsWith('sample_')) {
+    const [_, movieId, pageStr] = data.split('_');
+    const page = parseInt(pageStr);
+    try {
+      const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
+      if (!movie.samples || movie.samples.length === 0) {
+        await bot.sendMessage(chatId, '没有可用的截图');
+        return;
+      }
+      const startIndex = page * 5;
+      const endIndex = Math.min(startIndex + 5, movie.samples.length);
+      const samples = movie.samples.slice(startIndex, endIndex);
+      const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
+      await bot.sendMediaGroup(chatId, mediaGroup);
+
+      // 下一页按钮
+      if (endIndex < movie.samples.length) {
+        await bot.sendMessage(chatId, '查看更多截图', {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }
+            ]]
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`[ERROR] 获取样品截图失败: ${err.message}`);
+      await bot.sendMessage(chatId, '获取截图时出错');
+    }
+
+    await bot.answerCallbackQuery(query.id);
+  }
+});
+
+// /help 命令
+bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
-  if (!msg.text.startsWith('/')) {
-    bot.sendMessage(chatId, '未知命令，请使用 /help 查看可用命令。');
-  }
+  const helpMessage = `
+可用命令:
+/c [番号] - 查询影片详细信息、磁力链接及样品截图
+/help - 查看本帮助
+`;
+  bot.sendMessage(chatId, helpMessage);
 });
 
-module.exports = bot;
+console.log('Bot server running...');
