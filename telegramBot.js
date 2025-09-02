@@ -49,7 +49,6 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
       message += `标签: ${movie.tags.join(', ')}\n`;
     }
 
-    // 发送基础信息（文字）
     await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
 
     // 获取磁力链接
@@ -86,7 +85,7 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
   }
 });
 
-// 样品截图翻页按钮 & 女优头像按钮
+// 样品截图翻页 & 女优头像按钮
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
@@ -121,7 +120,6 @@ bot.on('callback_query', async (query) => {
       const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
       await bot.sendMediaGroup(chatId, mediaGroup);
 
-      // 下一页按钮
       if (endIndex < movie.samples.length) {
         await bot.sendMessage(chatId, '查看更多截图', {
           reply_markup: {
@@ -164,14 +162,13 @@ bot.onText(/\/latest/, async (msg) => {
 
   try {
     const data = await sendRequest(`${API_BASE_URL}/movies?page=1`);
-
     const movies = data.movies || [];
     if (movies.length === 0) {
       await bot.sendMessage(chatId, '未找到最新影片');
       return;
     }
 
-    const latest = movies.slice(0, 15); // 固定取前15个
+    const latest = movies.slice(0, 15);
     for (const movie of latest) {
       let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
@@ -179,7 +176,6 @@ bot.onText(/\/latest/, async (msg) => {
       if (movie.tags && movie.tags.length > 0) {
         text += `标签: ${movie.tags.join(', ')}\n`;
       }
-
       await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     }
   } catch (err) {
@@ -188,7 +184,7 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// /stars 命令: 根据女优名字搜索影片，并增加“查看头像”按钮
+// /stars 命令: 根据女优名字搜索影片并显示按钮获取头像
 bot.onText(/\/stars (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -202,7 +198,7 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
       return;
     }
 
-    const results = movies.slice(0, 15); // 固定前15条
+    const results = movies.slice(0, 15);
     for (const movie of results) {
       let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
@@ -210,19 +206,19 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
       if (movie.tags && movie.tags.length > 0) {
         text += `标签: ${movie.tags.join(', ')}\n`;
       }
-
       await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     }
 
-    // 在最后发送按钮，点击获取女优头像
+    // 单独发送按钮，点击获取女优头像
     const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
     if (starId) {
-      await bot.sendMessage(chatId, `查看女优头像`, {
+      await bot.sendMessage(chatId, `🎀 点击下面按钮查看女优头像:`, {
         reply_markup: {
           inline_keyboard: [
             [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
           ]
-        }
+        },
+        parse_mode: 'HTML'
       });
     }
 
