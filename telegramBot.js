@@ -146,22 +146,24 @@ bot.onText(/\/latest/, async (msg) => {
 
   try {
     const data = await sendRequest(`${API_BASE_URL}/movies?page=1`);
-    if (!data || !data.data || data.data.length === 0) {
+
+    const movies = data.movies || [];
+    if (movies.length === 0) {
       await bot.sendMessage(chatId, '未找到最新影片');
       return;
     }
 
-    const movies = data.data.slice(0, 10); // 取前10个
-    for (const movie of movies) {
+    const latest = movies.slice(0, 10); // 取前10个
+    for (const movie of latest) {
       let caption = `🎬 <b>${movie.title}</b>\n`;
       caption += `编号: <code>${movie.id}</code>\n`;
       caption += `日期: ${movie.date || 'N/A'}\n`;
-      if (movie.stars && movie.stars.length > 0) {
-        caption += `演员: ${movie.stars.map(s => s.name).join(' | ')}\n`;
+      if (movie.tags && movie.tags.length > 0) {
+        caption += `标签: ${movie.tags.join(', ')}\n`;
       }
 
-      if (movie.cover) {
-        await bot.sendPhoto(chatId, movie.cover, { caption, parse_mode: 'HTML' });
+      if (movie.img) {
+        await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
       } else {
         await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
       }
