@@ -4,7 +4,7 @@ const axios = require('axios');
 const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
 
-// 发送请求的函数
+// 发送请求
 async function sendRequest(url, options = {}) {
   try {
     const response = await axios({ ...options, url });
@@ -26,9 +26,9 @@ function formatSize(size) {
 }
 
 // 分段发送磁力链接
-function sendMagnets(bot, chatId, magnets, videoLength) {
-  const MAX_CAPTION = 900;
-  let message = '';
+async function sendMagnets(bot, chatId, magnets, videoLength) {
+  const MAX_CAPTION = 900; // Telegram 单条消息最大长度
+  let message = '<b>🧲 磁力链接:</b>\n';
   magnets.forEach((magnet, index) => {
     const line = `${index + 1}. <code>${magnet.link}</code> (${formatSize(magnet.size)} | ${videoLength || 'N/A'} 分钟)\n`;
     if ((message + line).length > MAX_CAPTION) {
@@ -38,7 +38,7 @@ function sendMagnets(bot, chatId, magnets, videoLength) {
     message += line;
   });
   if (message.length > 0) {
-    bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
   }
 }
 
@@ -65,16 +65,21 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     }
 
     // 发送封面 + 基本信息
-    const caption = `<b>标题:</b> ${title}\n<b>番号:</b> ${movieId}\n<b>日期:</b> ${date}\n<b>演员:</b> ${stars}`;
+    const caption = `<b>🎬 标题:</b> ${title}\n<b>番号:</b> ${movieId}\n<b>日期:</b> ${date}`;
     if (image) {
       await bot.sendPhoto(chatId, image, { caption, parse_mode: 'HTML' });
     } else {
       await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
     }
 
-    // 分段发送磁力链接
+    // 演员单独发送
+    if (stars !== 'N/A') {
+      await bot.sendMessage(chatId, `<b>👤 演员:</b> ${stars}`, { parse_mode: 'HTML' });
+    }
+
+    // 发送磁力链接
     if (magnets.length > 0) {
-      sendMagnets(bot, chatId, magnets, videoLength);
+      await sendMagnets(bot, chatId, magnets, videoLength);
     }
 
     // 样品截图按钮
@@ -131,8 +136,14 @@ bot.onText(/\/help/, msg => {
   const helpMessage = `
 使用 /c [番号] 查询影片详情及磁力链接
 示例: /c MDS-828
-磁力链接会显示文件大小和影片时长
-封面图 + 基本信息 + 磁力链接 + 样品截图按钮
+显示内容：
+- 封面图片
+- 标题
+- 番号
+- 日期
+- 演员
+- 磁力链接（带文件大小和影片时长）
+- 样品截图按钮（可翻页）
 `;
   bot.sendMessage(chatId, helpMessage);
 });
