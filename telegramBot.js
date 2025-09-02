@@ -196,31 +196,19 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
     const results = movies.slice(0, 15);
     const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
 
-    if (results.length > 0) {
-      const firstMovie = results[0];
-      let text = `🎬 <b>${firstMovie.title}</b>\n`;
-      text += `编号: <code>${firstMovie.id}</code>\n`;
-      text += `日期: ${firstMovie.date || 'N/A'}\n`;
-      if (firstMovie.tags && firstMovie.tags.length > 0) {
-        text += `标签: ${firstMovie.tags.join(', ')}\n`;
-      }
-
-      if (starId) {
-        await bot.sendMessage(chatId, text, {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
-            ]
-          }
-        });
-      } else {
-        await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
-      }
+    // 先发送按钮
+    if (starId) {
+      await bot.sendMessage(chatId, `点击获取 ${keyword} 的头像`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
+          ]
+        }
+      });
     }
 
-    for (let i = 1; i < results.length; i++) {
-      const movie = results[i];
+    // 再发送影片列表
+    for (const movie of results) {
       let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
       text += `日期: ${movie.date || 'N/A'}\n`;
