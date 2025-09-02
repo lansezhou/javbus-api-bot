@@ -170,12 +170,45 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
+// /stars 命令: 根据女优名字搜索影片
+bot.onText(/\/stars (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const keyword = match[1].trim();
+  console.log(`[INFO] 用户 ${msg.from.username} 搜索女优: ${keyword}`);
+
+  try {
+    // 调用搜索接口
+    const data = await sendRequest(`${API_BASE_URL}/movies/search?keyword=${encodeURIComponent(keyword)}`);
+    const movies = data.movies || [];
+    if (movies.length === 0) {
+      await bot.sendMessage(chatId, `未找到女优 ${keyword} 的影片`);
+      return;
+    }
+
+    const results = movies.slice(0, 15); // 固定前15条
+    for (const movie of results) {
+      let text = `🎬 <b>${movie.title}</b>\n`;
+      text += `编号: <code>${movie.id}</code>\n`;
+      text += `日期: ${movie.date || 'N/A'}\n`;
+      if (movie.tags && movie.tags.length > 0) {
+        text += `标签: ${movie.tags.join(', ')}\n`;
+      }
+
+      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    }
+  } catch (err) {
+    console.error(`[ERROR] 搜索女优失败: ${err.message}`);
+    await bot.sendMessage(chatId, `搜索女优 ${keyword} 出错`);
+  }
+});
+
 // /help 命令
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
   const helpMessage = `可用命令:
   /c [番号] - 查询影片详细信息、磁力链接及样品截图
-  /latest - 获取最新的10个影片
+  /latest - 获取最新的15个影片
+  /stars [女优名] - 根据女优名字搜索影片
   /help - 查看本帮助`;
   bot.sendMessage(chatId, helpMessage);
 });
