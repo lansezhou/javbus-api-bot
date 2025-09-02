@@ -1,9 +1,21 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-const token = '123456789:xxxxxxxxxxxxxxxxxxxxxx';  // 请替换为您的Telegram Bot Token
+// 从环境变量读取 Token 和 API 地址
+const token = process.env.TG_BOT_TOKEN;
+const API_BASE_URL = process.env.API_BASE_URL;
+
+if (!token) {
+  console.error('[ERROR] TG_BOT_TOKEN 未设置');
+  process.exit(1);
+}
+
+if (!API_BASE_URL) {
+  console.error('[ERROR] API_BASE_URL 未设置');
+  process.exit(1);
+}
+
 const bot = new TelegramBot(token, { polling: true });
-const API_BASE_URL = 'https://xyz.xyz.xyz/api';  // 替换为您的API URL
 
 // 发送请求的函数
 async function sendRequest(url, options = {}) {
@@ -73,12 +85,10 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
   console.log(`[INFO] 用户 ${msg.from.username} 请求影片编号: ${movieId}`);
   
   try {
-    console.log(`[INFO] 获取影片信息 ID: ${movieId}`);
     const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
     const title = movie.title || 'N/A';
     const date = movie.date || 'N/A';
     const tags = movie.tags ? movie.tags.join(', ') : 'N/A';
-    const genres = movie.genres ? movie.genres.map(genre => genre.name).join(', ') : 'N/A';
     const stars = movie.stars ? movie.stars.map(star => star.name).join(', ') : 'N/A';
     const image = movie.img || null;
     
@@ -104,24 +114,17 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       });
 
       if (magnets && magnets.length > 0) {
-        // 使用第一个磁力链接的大小
         const fileSize = magnets[0].size;
-        
-        // 格式化文件大小
         const formatSize = (sizeString) => {
           const size = parseFloat(sizeString);
           const unit = sizeString.replace(/[0-9.]/g, '').trim().toUpperCase();
           
-          if (unit === 'GB') {
-            return `${size.toFixed(2)} GB`;
-          } else if (unit === 'MB') {
-            return `${(size / 1024).toFixed(2)} GB`;
-          } else {
-            return `${size} ${unit}`;
-          }
+          if (unit === 'GB') return `${size.toFixed(2)} GB`;
+          if (unit === 'MB') return `${(size / 1024).toFixed(2)} GB`;
+          return `${size} ${unit}`;
         };
-
         const formattedSize = formatSize(fileSize);
+
         message += `【磁力】 ${movie.videoLength || 'N/A'}分钟 ${formattedSize}\n`;
         magnets.slice(0, 3).forEach((magnet, index) => {
           message += `【磁力链接 ${index + 1}】 <code>${magnet.link}</code>\n`;
@@ -134,15 +137,11 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       message += '【磁力】 获取磁力链接出错.\n';
     }
 
-
-    // 发送电影详情消息
     const options = {
       parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [
-          [
-            { text: "预览截图", callback_data: `sample_${movieId}_0` }
-          ]
+          [{ text: "预览截图", callback_data: `sample_${movieId}_0` }]
         ]
       }
     };
@@ -155,7 +154,6 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       }
     } catch (error) {
       console.error(`[ERROR] 发送图片出错: ${error.message}`);
-      // 如果发送图片失败，就只发送文字消息
       await bot.sendMessage(chatId, message, options);
     }
 
@@ -251,16 +249,13 @@ bot.on('callback_query', async (query) => {
         const endIndex = Math.min(startIndex + 5, movie.samples.length);
         const samples = movie.samples.slice(startIndex, endIndex);
         
-        // 创建媒体组
         const mediaGroup = samples.map(sample => ({
           type: 'photo',
           media: sample.src
         }));
         
-        // 发送媒体组
         await bot.sendMediaGroup(chatId, mediaGroup);
         
-        // 如果还有更多图片，添加"下一页"按钮
         if (endIndex < movie.samples.length) {
           await bot.sendMessage(chatId, '查看更多截图', {
             reply_markup: {
@@ -278,11 +273,8 @@ bot.on('callback_query', async (query) => {
       await bot.sendMessage(chatId, '获取截图时出错。');
     }
     
-    // 回应回调查询以消除加载状态
     await bot.answerCallbackQuery(query.id);
   }
 });
 
 module.exports = bot;
-
-
