@@ -16,7 +16,7 @@ async function sendRequest(url, options = {}) {
     const response = await axios({
       ...options,
       url,
-      timeout: 10000,
+      timeout: 10000
     });
     return response.data;
   } catch (error) {
@@ -24,40 +24,6 @@ async function sendRequest(url, options = {}) {
     throw error;
   }
 }
-
-// /latest 命令: 获取最新影片
-bot.onText(/\/latest/, async (msg) => {
-  const chatId = msg.chat.id;
-  console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
-
-  try {
-    const latestMovies = await sendRequest(`${API_BASE_URL}/movies?magnet=all&page=1`); // 获取第一页的最新影片
-
-    if (!latestMovies || latestMovies.length === 0) {
-      await bot.sendMessage(chatId, '📰 当前没有最新影片可供显示');
-      return;
-    }
-
-    // 只取最新的10个影片
-    const moviesToShow = latestMovies.slice(0, 10);
-    let message = '🌟 最新影片:\n\n';
-
-    moviesToShow.forEach(movie => {
-      message += `🎬 <b>${movie.title}</b> (编号: <code>${movie.id}</code>)\n`;
-      message += `日期: ${movie.date || 'N/A'}\n`;
-      if (movie.stars && movie.stars.length > 0) {
-        message += `演员: ${movie.stars.map(s => s.name).join(' | ')}\n`;
-      }
-      message += '\n';
-    });
-
-    await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
-
-  } catch (error) {
-    console.error(`[ERROR] 请求最新影片失败: ${error.message}`);
-    await bot.sendMessage(chatId, '获取最新影片时出错');
-  }
-});
 
 // /c 命令: 查询影片信息
 bot.onText(/\/c (.+)/, async (msg, match) => {
@@ -105,10 +71,12 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
 
     // 样品截图按钮
     if (movie.samples && movie.samples.length > 0) {
-      await bot.sendMessage(chatId, '还有更多截图，可使用按钮查看', {
+      await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看`, {
         reply_markup: {
-          inline_keyboard: [[{ text: '查看截图', callback_data: `sample_${movieId}_0` }]],
-        },
+          inline_keyboard: [
+            [{ text: '查看截图', callback_data: `sample_${movieId}_0` }]
+          ]
+        }
       });
     }
 
@@ -156,8 +124,10 @@ bot.on('callback_query', async (query) => {
       if (endIndex < movie.samples.length) {
         await bot.sendMessage(chatId, '查看更多截图', {
           reply_markup: {
-            inline_keyboard: [[{ text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }]],
-          },
+            inline_keyboard: [[
+              { text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }
+            ]]
+          }
         });
       }
     } catch (err) {
@@ -169,10 +139,46 @@ bot.on('callback_query', async (query) => {
   }
 });
 
+// /latest 命令: 获取最新影片前10个
+bot.onText(/\/latest/, async (msg) => {
+  const chatId = msg.chat.id;
+  console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
+
+  try {
+    const data = await sendRequest(`${API_BASE_URL}/movies?page=1`);
+    if (!data || !data.data || data.data.length === 0) {
+      await bot.sendMessage(chatId, '未找到最新影片');
+      return;
+    }
+
+    const movies = data.data.slice(0, 10); // 取前10个
+    for (const movie of movies) {
+      let caption = `🎬 <b>${movie.title}</b>\n`;
+      caption += `编号: <code>${movie.id}</code>\n`;
+      caption += `日期: ${movie.date || 'N/A'}\n`;
+      if (movie.stars && movie.stars.length > 0) {
+        caption += `演员: ${movie.stars.map(s => s.name).join(' | ')}\n`;
+      }
+
+      if (movie.cover) {
+        await bot.sendPhoto(chatId, movie.cover, { caption, parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
+      }
+    }
+  } catch (err) {
+    console.error(`[ERROR] 获取最新影片失败: ${err.message}`);
+    await bot.sendMessage(chatId, '获取最新影片出错');
+  }
+});
+
 // /help 命令
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
-  const helpMessage = `可用命令:\n/c [番号] - 查询影片详细信息、磁力链接及样品截图\n/latest - 获取最新影片\n/help - 查看本帮助`;
+  const helpMessage = `可用命令:
+  /c [番号] - 查询影片详细信息、磁力链接及样品截图
+  /latest - 获取最新的10个影片
+  /help - 查看本帮助`;
   bot.sendMessage(chatId, helpMessage);
 });
 
