@@ -155,18 +155,17 @@ bot.onText(/\/latest/, async (msg) => {
 
     const latest = movies.slice(0, 10); // 取前10个
     for (const movie of latest) {
-      let caption = `🎬 <b>${movie.title}</b>\n`;
-      caption += `编号: <code>${movie.id}</code>\n`;
-      caption += `日期: ${movie.date || 'N/A'}\n`;
+      let text = `🎬 <b>${movie.title}</b>\n`;
+      text += `编号: <code>${movie.id}</code>\n`;
+      text += `日期: ${movie.date || 'N/A'}\n`;
       if (movie.tags && movie.tags.length > 0) {
-        caption += `标签: ${movie.tags.join(', ')}\n`;
+        text += `标签: ${movie.tags.join(', ')}\n`;
+      }
+      if (movie.img) {
+        text += `\n🖼 封面: ${movie.img}`;
       }
 
-      if (movie.img) {
-        await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
-      } else {
-        await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
-      }
+      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     }
   } catch (err) {
     console.error(`[ERROR] 获取最新影片失败: ${err.message}`);
