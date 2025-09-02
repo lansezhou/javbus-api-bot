@@ -1,8 +1,10 @@
+require('dotenv').config(); // 可选，本地开发用 .env 文件
+
 const express = require('express');
 const app = express();
-const port = 3033;
+const port = process.env.PORT || 3033;
 
-// 引入 Telegram Bot
+// 加载 Telegram Bot
 require('./telegramBot');
 
 app.get('/', (req, res) => {
@@ -10,5 +12,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening at http://localhost:${port}`);
+  console.log(`Bot server running at http://localhost:${port}`);
 });
