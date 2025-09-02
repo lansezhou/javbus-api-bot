@@ -27,11 +27,11 @@ function formatSize(size) {
 
 // 分段发送磁力链接
 function sendMagnets(bot, chatId, magnets, videoLength) {
-  const MAX_LENGTH = 900;
+  const MAX_MESSAGE_LENGTH = 900; // Telegram 安全长度
   let message = '';
   magnets.forEach((magnet, index) => {
     const line = `${index + 1}. ${magnet.link} (${formatSize(magnet.size)} | ${videoLength || 'N/A'} 分钟)\n`;
-    if ((message + line).length > MAX_LENGTH) {
+    if ((message + line).length > MAX_MESSAGE_LENGTH) {
       bot.sendMessage(chatId, message);
       message = '';
     }
@@ -43,7 +43,7 @@ function sendMagnets(bot, chatId, magnets, videoLength) {
 // /c 命令
 bot.onText(/\/c (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const movieId = match[1].trim();
+  const movieId = match[1];
   console.log(`[INFO] User ${msg.from?.username} 请求番号: ${movieId}`);
 
   try {
@@ -65,7 +65,7 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     // 发送封面
     if (image) await bot.sendPhoto(chatId, image);
 
-    // 发送文字信息
+    // 发送基本信息
     await bot.sendMessage(chatId, `🎬 ${title}`);
     await bot.sendMessage(chatId, `编号: ${movieId}\n日期: ${date}`);
     await bot.sendMessage(chatId, `演员: ${stars}`);
@@ -127,12 +127,8 @@ bot.onText(/\/help/, msg => {
   const helpMessage = `
 使用 /c [番号] 查询影片详情及磁力链接
 示例: /c MDS-828
-
-流程:
-1️⃣ 封面图单独发送
-2️⃣ 标题、番号、日期、演员单独发送
-3️⃣ 磁力链接分段发送
-4️⃣ 样品截图可使用按钮查看更多
+封面图 -> 标题 -> 番号 -> 日期 -> 演员 -> 磁力链接 -> 样品截图按钮
+磁力链接会显示文件大小和影片时长
 `;
   bot.sendMessage(chatId, helpMessage);
 });
