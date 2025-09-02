@@ -139,7 +139,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// /latest 命令: 获取最新影片前10个
+// /latest 命令: 获取最新影片前15个
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
@@ -153,16 +153,13 @@ bot.onText(/\/latest/, async (msg) => {
       return;
     }
 
-    const latest = movies.slice(0, 10); // 取前10个
+    const latest = movies.slice(0, 15); // 固定取前15个
     for (const movie of latest) {
       let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
       text += `日期: ${movie.date || 'N/A'}\n`;
       if (movie.tags && movie.tags.length > 0) {
         text += `标签: ${movie.tags.join(', ')}\n`;
-      }
-      if (movie.img) {
-        text += `\n🖼 封面: ${movie.img}`;
       }
 
       await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
