@@ -4,21 +4,21 @@ const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
 
 // ================= 环境变量配置 =================
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const API_BASE = process.env.API_BASE || "http://localhost:8922/api";
+const BOT_TOKEN = process.env.TG_BOT_TOKEN;
+const API_BASE = process.env.API_BASE_URL || "http://localhost:8922/api";
 
 // 检查必要环境变量
-if (!BOT_TOKEN || !API_BASE) {
+if (!TG_BOT_TOKEN || !API_BASE_URL) {
   console.error(
-    "[FATAL] 缺少必要的环境变量，请检查 BOT_TOKEN 和 API_BASE 是否已配置"
+    "[FATAL] 缺少必要的环境变量，请检查 TG_BOT_TOKEN 和 API_BASE_URL 是否已配置"
   );
   process.exit(1);
 }
 
-console.log("[INFO] 使用的 API_BASE:", API_BASE);
+console.log("[INFO] 使用的 API_BASE_URL:", API_BASE_URL);
 
 // ================= 初始化 Bot =================
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(TG_BOT_TOKEN, { polling: true });
 
 // ================= 通用请求函数 =================
 async function sendRequest(apiUrl) {
