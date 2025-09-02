@@ -49,40 +49,38 @@ bot.onText(/\/help/, (msg) => {
   bot.sendMessage(chatId, helpMessage);
 });
 
-// /search 指令
+// /search 指令（影片搜索）
 bot.onText(/\/search (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const query = match[1];
+  const keyword = match[1];
   try {
-    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { 
-      params: { keyword: query, magnet: 'all' }  // 返回有无磁力链接
+    const data = await sendRequest(`${API_BASE_URL}/movies/search`, {
+      params: { keyword, magnet: 'all' }
     });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) {
-      return bot.sendMessage(chatId, '未找到影片。');
-    }
+    const movies = data.data || [];
+    if (!movies.length) return bot.sendMessage(chatId, '未找到影片。');
+
     let message = '搜索结果:\n';
     movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.date}\n`;
+      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.releaseDate}\n`;
     });
     bot.sendMessage(chatId, message);
-  } catch (error) {
-    console.error(`[ERROR] /search 调用 API 出错: ${API_BASE_URL}/movies/search`, error.message);
-    bot.sendMessage(chatId, '从 API 获取数据时出错');
+  } catch (err) {
+    console.error('[ERROR] /search 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '查询影片出错，请稍后重试。');
   }
 });
 
-// /id 指令
+// /id 指令（影片详情 + 磁力链接）
 bot.onText(/\/id (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const movieId = match[1];
-  
   try {
     const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
     const title = movie.title || 'N/A';
-    const date = movie.date || 'N/A';
-    const tags = movie.tags ? movie.tags.join(', ') : 'N/A';
-    const stars = movie.stars ? movie.stars.map(s => s.name).join(', ') : 'N/A';
+    const date = movie.releaseDate || 'N/A';
+    const stars = movie.stars?.map(s => s.name).join(', ') || 'N/A';
+    const tags = movie.tags?.join(', ') || 'N/A';
     const image = movie.img || null;
 
     let message = `
@@ -97,8 +95,8 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
     try {
       const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
       if (magnets && magnets.length > 0) {
-        magnets.slice(0, 3).forEach((magnet, idx) => {
-          message += `【磁力链接 ${idx + 1}】 <code>${magnet.link}</code>\n`;
+        magnets.slice(0, 3).forEach((m, idx) => {
+          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
         });
       } else {
         message += '【磁力】 无可用磁力链接\n';
@@ -120,76 +118,112 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
     } else {
       await bot.sendMessage(chatId, message, options);
     }
-
-  } catch (error) {
-    console.error(`[ERROR] /id 调用 API 出错: ${API_BASE_URL}/movies/${movieId}`, error.message);
-    bot.sendMessage(chatId, '从 API 获取影片数据时出错.');
+  } catch (err) {
+    console.error('[ERROR] /id 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '获取影片详情出错');
   }
 });
 
-// /starsearch 指令
+// /star 指令（演员详情）
+bot.onText(/\/star (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const starId = match[1];
+  try {
+    const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
+    const name = star.name || 'N/A';
+    const birthday = star.birthday || 'N/A';
+    const height = star.height || 'N/A';
+    const measurements = star.measurements || 'N/A';
+    const aliases = star.aliases?.join(', ') || 'N/A';
+    const image = star.img || null;
+
+    let message = `
+【姓名】 ${name}
+【生日】 ${birthday}
+【身高】 ${height}
+【三围】 ${measurements}
+【别名】 ${aliases}
+【编号】 ${starId}
+`;
+
+    if (image) {
+      await bot.sendPhoto(chatId, image, { caption: message });
+    } else {
+      await bot.sendMessage(chatId, message);
+    }
+  } catch (err) {
+    console.error('[ERROR] /star 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '获取演员详情出错');
+  }
+});
+
+// /starsearch 指令（关键词搜索演员）
 bot.onText(/\/starsearch (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const query = match[1];
+  const keyword = match[1];
   try {
-    const data = await sendRequest(`${API_BASE_URL}/stars/search`, { params: { keyword: query } });
-    const stars = data.stars;
-    if (!stars || stars.length === 0) return bot.sendMessage(chatId, '未找到演员');
+    // 新 API 没有 /stars/search，所以改为搜索影片然后提取演员
+    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { params: { keyword, magnet: 'all' } });
+    const movies = data.data || [];
+    if (!movies.length) return bot.sendMessage(chatId, '未找到相关演员');
+
+    // 收集演员
+    const actorMap = {};
+    movies.forEach(m => {
+      m.stars?.forEach(s => {
+        actorMap[s.id] = s.name;
+      });
+    });
+
     let message = '搜索结果:\n';
-    stars.forEach(star => {
-      message += `\n姓名: ${star.name}\n编号: ${star.id}\n`;
+    Object.entries(actorMap).forEach(([id, name]) => {
+      message += `\n姓名: ${name}\n编号: ${id}\n`;
     });
     bot.sendMessage(chatId, message);
-  } catch (error) {
-    console.error(`[ERROR] /starsearch 调用 API 出错: ${API_BASE_URL}/stars/search`, error.message);
-    bot.sendMessage(chatId, '从 API 获取数据时出错');
+  } catch (err) {
+    console.error('[ERROR] /starsearch 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '搜索演员出错');
   }
 });
 
-// /starpage 指令
+// /starpage 指令（演员影片列表）
 bot.onText(/\/starpage (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const [starId, page] = match[1].split(' ');
+  const [starId, page = 1] = match[1].split(' ');
   try {
-    const data = await sendRequest(`${API_BASE_URL}/movies`, { 
-      params: { filterType: 'star', filterValue: starId, magnet: 'all', page } 
+    const data = await sendRequest(`${API_BASE_URL}/movies`, {
+      params: { filterType: 'star', filterValue: starId, magnet: 'all', page }
     });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) return bot.sendMessage(chatId, '未找到影片');
-    let message = '演员影片列表:\n';
-    movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n`;
+    const movies = data.data || [];
+    if (!movies.length) return bot.sendMessage(chatId, '未找到影片');
+
+    let message = `演员 ${starId} 的影片列表（第 ${page} 页）:\n`;
+    movies.forEach(m => {
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n`;
     });
     bot.sendMessage(chatId, message);
-  } catch (error) {
-    console.error(`[ERROR] /starpage 调用 API 出错: ${API_BASE_URL}/movies?filterType=star&filterValue=${starId}`, error.message);
-    bot.sendMessage(chatId, '从 API 获取演员影片数据时出错');
+  } catch (err) {
+    console.error('[ERROR] /starpage 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '获取演员影片列表出错');
   }
 });
 
-// /latest 指令
+// /latest 指令（最新影片）
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   try {
     const data = await sendRequest(`${API_BASE_URL}/movies`, { params: { magnet: 'all' } });
-    const movies = data.movies;
-    if (!movies || movies.length === 0) return bot.sendMessage(chatId, '未找到最新影片');
+    const movies = data.data || [];
+    if (!movies.length) return bot.sendMessage(chatId, '未找到最新影片');
+
     let message = '最新影片:\n';
-    movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.date}\n`;
+    movies.forEach(m => {
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.releaseDate}\n`;
     });
     bot.sendMessage(chatId, message);
-  } catch (error) {
-    console.error(`[ERROR] /latest 调用 API 出错: ${API_BASE_URL}/movies`, error.message);
-    bot.sendMessage(chatId, '从 API 获取最新影片数据时出错');
-  }
-});
-
-// 未识别命令
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  if (!msg.text.startsWith('/')) {
-    bot.sendMessage(chatId, '无法识别的命令。使用 /help 查看可用命令。');
+  } catch (err) {
+    console.error('[ERROR] /latest 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '获取最新影片出错');
   }
 });
 
