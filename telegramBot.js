@@ -54,13 +54,11 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
 
     // 获取磁力链接
     try {
-      const magnets = await sendRequest(
-        `${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`
-      );
+      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
       if (magnets && magnets.length > 0) {
         let magnetMsg = '🧲 <b>磁力链接:</b>\n';
         magnets.slice(0, 5).forEach((m, idx) => {
-          magnetMsg += `${idx + 1}. <code>${m.link}</code> (${m.size})\n`;
+          magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
         });
         await bot.sendMessage(chatId, magnetMsg, { parse_mode: 'HTML' });
       } else {
@@ -71,22 +69,15 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
       await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
     }
 
-    // 样品截图
+    // 样品截图按钮
     if (movie.samples && movie.samples.length > 0) {
-      const mediaGroup = movie.samples.slice(0, 5).map(sample => ({
-        type: 'photo',
-        media: sample.src
-      }));
-      await bot.sendMediaGroup(chatId, mediaGroup);
-      if (movie.samples.length > 5) {
-        await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看更多`, {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '下一页截图', callback_data: `sample_${movieId}_1` }
-            ]]
-          }
-        });
-      }
+      await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '查看截图', callback_data: `sample_${movieId}_0` }]
+          ]
+        }
+      });
     }
 
   } catch (error) {
@@ -99,32 +90,32 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
-  
+
   if (data.startsWith('sample_')) {
     const parts = data.split('_');
     if (parts.length < 3) {
       await bot.answerCallbackQuery(query.id, { text: '无效请求' });
       return;
     }
-    
+
     const movieId = parts[1];
     const page = parseInt(parts[2]);
-    
+
     try {
       const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
       if (!movie.samples || movie.samples.length === 0) {
         await bot.sendMessage(chatId, '没有可用的截图');
         return;
       }
-      
+
       const startIndex = page * 5;
       const endIndex = Math.min(startIndex + 5, movie.samples.length);
-      
+
       if (startIndex >= movie.samples.length) {
         await bot.answerCallbackQuery(query.id, { text: '已经是最后一页' });
         return;
       }
-      
+
       const samples = movie.samples.slice(startIndex, endIndex);
       const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
       await bot.sendMediaGroup(chatId, mediaGroup);
@@ -143,7 +134,7 @@ bot.on('callback_query', async (query) => {
       console.error(`[ERROR] 获取样品截图失败: ${err.message}`);
       await bot.sendMessage(chatId, '获取截图时出错');
     }
-    
+
     await bot.answerCallbackQuery(query.id);
   }
 });
