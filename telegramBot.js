@@ -17,7 +17,7 @@ if (!API_BASE_URL) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 发送请求的函数
+// 发送请求函数
 async function sendRequest(url, options = {}) {
   try {
     const response = await axios({ ...options, url });
@@ -49,7 +49,7 @@ bot.onText(/\/help/, (msg) => {
   bot.sendMessage(chatId, helpMessage);
 });
 
-// /search 指令（影片搜索）
+// /search 指令
 bot.onText(/\/search (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -59,12 +59,12 @@ bot.onText(/\/search (.+)/, async (msg, match) => {
     const data = await sendRequest(`${API_BASE_URL}/movies/search`, {
       params: { keyword, magnet: 'all' }
     });
-    const movies = data.data || [];
+    const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到影片。');
 
     let message = '搜索结果:\n';
     movies.forEach(movie => {
-      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.releaseDate}\n`;
+      message += `\n标题: ${movie.title}\n编号: ${movie.id}\n日期: ${movie.date}\n`;
     });
     bot.sendMessage(chatId, message);
   } catch (err) {
@@ -82,7 +82,7 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
   try {
     const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
     const title = movie.title || 'N/A';
-    const date = movie.releaseDate || 'N/A';
+    const date = movie.date || 'N/A';
     const stars = movie.stars?.map(s => s.name).join(', ') || 'N/A';
     const tags = movie.tags?.join(', ') || 'N/A';
     const image = movie.img || null;
@@ -100,7 +100,9 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
       if (magnets && magnets.length > 0) {
         magnets.slice(0, 3).forEach((m, idx) => {
-          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
+          const sizeStr = m.size || (m.numberSize ? (m.numberSize / 1024 / 1024 / 1024).toFixed(2) + 'GB' : '未知大小');
+          const dateStr = m.shareDate || '未知日期';
+          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n大小: ${sizeStr} | 上传: ${dateStr}\n`;
         });
       } else {
         message += '【磁力】 无可用磁力链接\n';
@@ -175,7 +177,7 @@ bot.onText(/\/starsearch (.+)/, async (msg, match) => {
       params: { keyword, magnet: 'all' } 
     });
 
-    const movies = data.data || [];
+    const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
 
     // 收集演员并去重，只保留名字包含关键词的
@@ -213,7 +215,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
     const data = await sendRequest(`${API_BASE_URL}/movies`, {
       params: { filterType: 'star', filterValue: starId, magnet: 'all', page }
     });
-    const movies = data.data || [];
+    const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到影片');
 
     let message = `演员 ${starId} 的影片列表（第 ${page} 页）:\n`;
@@ -227,17 +229,17 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
   }
 });
 
-// /latest 指令（最新影片）
+//// /latest 指令（最新影片）
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   try {
     const data = await sendRequest(`${API_BASE_URL}/movies`, { params: { magnet: 'all' } });
-    const movies = data.data || [];
+    const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到最新影片');
 
     let message = '最新影片:\n';
     movies.forEach(m => {
-      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.releaseDate}\n`;
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.date}\n`;
     });
     bot.sendMessage(chatId, message);
   } catch (err) {
@@ -300,5 +302,5 @@ module.exports = bot;
 
 
 
-
-
+        
+        
