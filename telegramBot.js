@@ -1,11 +1,22 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-const token = '123456789:xxxxxxxxxxxxxxxxxxxxxx';  // 请替换为您的Telegram Bot Token
-const bot = new TelegramBot(token, { polling: true });
-const API_BASE_URL = 'https://xyz.xyz.xyz/api';  // 替换为您的API URL
+// 使用环境变量
+const token = process.env.TELEGRAM_TOKEN;  // Telegram Bot Token
+const API_BASE_URL = process.env.API_BASE_URL;  // API 地址
 
-//项目地址：https://github.com/wensley/javbus-api-bot
+if (!token) {
+  console.error('[ERROR] TELEGRAM_TOKEN not set.');
+  process.exit(1);
+}
+if (!API_BASE_URL) {
+  console.error('[ERROR] API_BASE_URL not set.');
+  process.exit(1);
+}
+
+const bot = new TelegramBot(token, { polling: true });
+
+// 项目地址：https://github.com/wensley/javbus-api-bot
 
 // 发送请求的函数
 async function sendRequest(url, options = {}) {
@@ -106,21 +117,14 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       });
 
       if (magnets && magnets.length > 0) {
-        // 使用第一个磁力链接的大小
         const fileSize = magnets[0].size;
         
-        // 格式化文件大小
         const formatSize = (sizeString) => {
           const size = parseFloat(sizeString);
           const unit = sizeString.replace(/[0-9.]/g, '').trim().toUpperCase();
-          
-          if (unit === 'GB') {
-            return `${size.toFixed(2)} GB`;
-          } else if (unit === 'MB') {
-            return `${(size / 1024).toFixed(2)} GB`;
-          } else {
-            return `${size} ${unit}`;
-          }
+          if (unit === 'GB') return `${size.toFixed(2)} GB`;
+          else if (unit === 'MB') return `${(size / 1024).toFixed(2)} GB`;
+          else return `${size} ${unit}`;
         };
 
         const formattedSize = formatSize(fileSize);
@@ -136,8 +140,6 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       message += '【Magnet】 Error fetching magnet links.\n';
     }
 
-
-    // 发送电影详情消息
     const options = {
       parse_mode: "HTML",
       reply_markup: {
@@ -150,10 +152,6 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
                 url: `https://keepshare.org/gc6ia801/${encodeURIComponent(magnets[0].link)}`
               }
             ] : [])
-          ],
-          [
-            { text: "项目地址", url: "https://github.com/wensley/javbus-api-bot" },
-            { text: "关注频道", url: "https://t.me/zhcnxyz" }
           ]
         ]
       }
@@ -167,11 +165,9 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
       }
     } catch (error) {
       console.error(`[ERROR] Error sending photo: ${error.message}`);
-      // 如果发送图片失败，就只发送文字消息
       await bot.sendMessage(chatId, message, options);
-    }
-
-  } catch (error) {
+      }
+    } catch (error) {
     console.error(`[ERROR] Error fetching movie data: ${error.message}`);
     await bot.sendMessage(chatId, 'Error fetching data from API.');
   }
