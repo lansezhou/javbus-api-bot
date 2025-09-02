@@ -38,7 +38,6 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
       return;
     }
 
-    // 基本信息
     let message = `🎬 <b>${movie.title}</b>\n`;
     message += `编号: <code>${movie.id}</code>\n`;
     message += `日期: ${movie.date || 'N/A'}\n`;
@@ -51,7 +50,6 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
 
     await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
 
-    // 获取磁力链接
     try {
       const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
       if (magnets && magnets.length > 0) {
@@ -68,7 +66,6 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
       await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
     }
 
-    // 样品截图按钮
     if (movie.samples && movie.samples.length > 0) {
       await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看`, {
         reply_markup: {
@@ -90,7 +87,6 @@ bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
-  // 样品截图翻页
   if (data.startsWith('sample_')) {
     const parts = data.split('_');
     if (parts.length < 3) {
@@ -137,7 +133,6 @@ bot.on('callback_query', async (query) => {
     await bot.answerCallbackQuery(query.id);
   }
 
-  // 女优头像按钮
   if (data.startsWith('star_avatar_')) {
     const starId = data.replace('star_avatar_', '');
     try {
@@ -155,7 +150,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// /latest 命令: 获取最新影片前15个
+// /latest 命令
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
@@ -184,7 +179,7 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// /stars 命令: 根据女优名字搜索影片并显示按钮获取头像
+// /stars 命令
 bot.onText(/\/stars (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -199,7 +194,33 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
     }
 
     const results = movies.slice(0, 15);
-    for (const movie of results) {
+    const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
+
+    if (results.length > 0) {
+      const firstMovie = results[0];
+      let text = `🎬 <b>${firstMovie.title}</b>\n`;
+      text += `编号: <code>${firstMovie.id}</code>\n`;
+      text += `日期: ${firstMovie.date || 'N/A'}\n`;
+      if (firstMovie.tags && firstMovie.tags.length > 0) {
+        text += `标签: ${firstMovie.tags.join(', ')}\n`;
+      }
+
+      if (starId) {
+        await bot.sendMessage(chatId, text, {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
+            ]
+          }
+        });
+      } else {
+        await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+      }
+    }
+
+    for (let i = 1; i < results.length; i++) {
+      const movie = results[i];
       let text = `🎬 <b>${movie.title}</b>\n`;
       text += `编号: <code>${movie.id}</code>\n`;
       text += `日期: ${movie.date || 'N/A'}\n`;
@@ -207,19 +228,6 @@ bot.onText(/\/stars (.+)/, async (msg, match) => {
         text += `标签: ${movie.tags.join(', ')}\n`;
       }
       await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
-    }
-
-    // 单独发送按钮，点击获取女优头像
-    const starId = movies[0].stars && movies[0].stars.length > 0 ? movies[0].stars[0].id : null;
-    if (starId) {
-      await bot.sendMessage(chatId, `🎀 点击下面按钮查看女优头像:`, {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: `查看 ${keyword} 头像`, callback_data: `star_avatar_${starId}` }]
-          ]
-        },
-        parse_mode: 'HTML'
-      });
     }
 
   } catch (err) {
