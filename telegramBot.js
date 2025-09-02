@@ -27,23 +27,23 @@ function formatSize(size) {
 
 // 分段发送磁力链接
 function sendMagnets(bot, chatId, magnets, videoLength) {
-  const MAX_LEN = 900; // Telegram 消息长度限制
-  let msg = '';
-  magnets.forEach((m, i) => {
-    const line = `${i + 1}. ${m.link} (${formatSize(m.size)} | ${videoLength || 'N/A'} 分钟)\n`;
-    if ((msg + line).length > MAX_LEN) {
-      bot.sendMessage(chatId, msg);
-      msg = '';
+  const MAX_LENGTH = 900;
+  let message = '';
+  magnets.forEach((magnet, index) => {
+    const line = `${index + 1}. ${magnet.link} (${formatSize(magnet.size)} | ${videoLength || 'N/A'} 分钟)\n`;
+    if ((message + line).length > MAX_LENGTH) {
+      bot.sendMessage(chatId, message);
+      message = '';
     }
-    msg += line;
+    message += line;
   });
-  if (msg.length > 0) bot.sendMessage(chatId, msg);
+  if (message.length > 0) bot.sendMessage(chatId, message);
 }
 
 // /c 命令
 bot.onText(/\/c (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const movieId = match[1];
+  const movieId = match[1].trim();
   console.log(`[INFO] User ${msg.from?.username} 请求番号: ${movieId}`);
 
   try {
@@ -54,25 +54,21 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     const image = movie.img || null;
     const videoLength = movie.videoLength || 'N/A';
 
-    // 发送封面 + 基本信息（只包含标题/番号/日期）
-    const caption = `🎬 ${title}\n编号: ${movieId}\n日期: ${date}`;
-    if (image) {
-      await bot.sendPhoto(chatId, image, { caption });
-    } else {
-      await bot.sendMessage(chatId, caption);
-    }
-
-    // 演员信息
-    await bot.sendMessage(chatId, `演员: ${stars}`);
-
     // 获取磁力链接
     let magnets = [];
     try {
       magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`, { params: { gid: movie.gid, uc: movie.uc } });
-    } catch (err) {
-      console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
-      await bot.sendMessage(chatId, '获取磁力链接失败');
+    } catch (error) {
+      console.error(`[ERROR] 获取磁力链接失败: ${error.message}`);
     }
+
+    // 发送封面
+    if (image) await bot.sendPhoto(chatId, image);
+
+    // 发送文字信息
+    await bot.sendMessage(chatId, `🎬 ${title}`);
+    await bot.sendMessage(chatId, `编号: ${movieId}\n日期: ${date}`);
+    await bot.sendMessage(chatId, `演员: ${stars}`);
 
     // 分段发送磁力链接
     if (magnets.length > 0) sendMagnets(bot, chatId, magnets, videoLength);
@@ -80,13 +76,17 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     // 样品截图按钮
     if (movie.samples && movie.samples.length > 0) {
       await bot.sendMessage(chatId, '还有更多截图，可使用按钮查看更多', {
-        reply_markup: { inline_keyboard: [[{ text: '查看截图', callback_data: `sample_${movieId}_0` }]] }
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '查看截图', callback_data: `sample_${movieId}_0` }]
+          ]
+        }
       });
     }
 
-  } catch (err) {
-    console.error(`[ERROR] 获取影片 ${movieId} 失败: ${err.message}`);
-    await bot.sendMessage(chatId, `未能获取番号 ${movieId} 的影片信息`);
+  } catch (error) {
+    console.error(`[ERROR] 获取影片 ${movieId} 失败: ${error.message}`);
+    bot.sendMessage(chatId, `未能获取番号 ${movieId} 的影片信息`);
   }
 });
 
@@ -103,18 +103,19 @@ bot.on('callback_query', async query => {
       const start = page * 5;
       const end = Math.min(start + 5, samples.length);
       const mediaGroup = samples.slice(start, end).map(s => ({ type: 'photo', media: s.src }));
-      if (mediaGroup.length > 0) await bot.sendMediaGroup(chatId, mediaGroup);
+      await bot.sendMediaGroup(chatId, mediaGroup);
 
       // 下一页按钮
       if (end < samples.length) {
         await bot.sendMessage(chatId, '查看更多截图', {
-          reply_markup: { inline_keyboard: [[{ text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }]] }
+          reply_markup: {
+            inline_keyboard: [[{ text: '下一页', callback_data: `sample_${movieId}_${page + 1}` }]]
+          }
         });
       }
-
-    } catch (err) {
-      console.error(`[ERROR] 获取截图失败: ${err.message}`);
-      await bot.sendMessage(chatId, '获取截图时出错');
+    } catch (error) {
+      console.error(`[ERROR] 获取截图失败: ${error.message}`);
+      bot.sendMessage(chatId, '获取截图时出错');
     }
     await bot.answerCallbackQuery(query.id);
   }
@@ -126,11 +127,12 @@ bot.onText(/\/help/, msg => {
   const helpMessage = `
 使用 /c [番号] 查询影片详情及磁力链接
 示例: /c MDS-828
-显示内容:
-- 封面图 + 标题 + 番号 + 日期
-- 演员
-- 磁力链接（文件大小 + 时长）
-- 样品截图按钮
+
+流程:
+1️⃣ 封面图单独发送
+2️⃣ 标题、番号、日期、演员单独发送
+3️⃣ 磁力链接分段发送
+4️⃣ 样品截图可使用按钮查看更多
 `;
   bot.sendMessage(chatId, helpMessage);
 });
