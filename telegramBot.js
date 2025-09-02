@@ -17,7 +17,7 @@ if (!API_BASE_URL) {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 封装请求
+// 发送请求的函数
 async function sendRequest(url, options = {}) {
   try {
     const response = await axios({ ...options, url });
@@ -28,13 +28,13 @@ async function sendRequest(url, options = {}) {
   }
 }
 
-// /start
+// /start 指令
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, '欢迎使用 @avgifbusbot！使用 /help 查看可用命令。');
 });
 
-// /help
+// /help 指令
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
   const helpMessage = `
@@ -49,7 +49,7 @@ bot.onText(/\/help/, (msg) => {
   bot.sendMessage(chatId, helpMessage);
 });
 
-// /search
+// /search 指令（影片搜索）
 bot.onText(/\/search (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -73,7 +73,7 @@ bot.onText(/\/search (.+)/, async (msg, match) => {
   }
 });
 
-// /id
+// /id 指令（影片详情 + 磁力链接）
 bot.onText(/\/id (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const movieId = match[1].trim();
@@ -95,23 +95,19 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
 【标签】 <code>${tags}</code>
 `;
 
-    // 磁力链接
-    if (movie.gid && movie.uc !== undefined) {
-      try {
-        const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
-        if (magnets && magnets.length > 0) {
-          magnets.slice(0, 3).forEach((m, idx) => {
-            message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
-          });
-        } else {
-          message += '【磁力】 无可用磁力链接\n';
-        }
-      } catch (err) {
-        message += '【磁力】 获取磁力链接出错\n';
-        console.error(`[ERROR] /id 获取磁力链接出错: ${movieId}`, err.message);
+    // 获取磁力链接
+    try {
+      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
+      if (magnets && magnets.length > 0) {
+        magnets.slice(0, 3).forEach((m, idx) => {
+          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
+        });
+      } else {
+        message += '【磁力】 无可用磁力链接\n';
       }
-    } else {
-      message += '【磁力】 无可用磁力链接\n';
+    } catch (err) {
+      message += '【磁力】 获取磁力链接出错\n';
+      console.error(`[ERROR] /id 获取磁力链接出错: ${movieId}`, err.message);
     }
 
     const options = {
@@ -132,41 +128,7 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
   }
 });
 
-// /starsearch
-bot.onText(/\/starsearch (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const keyword = match[1].trim();
-  if (!keyword) return bot.sendMessage(chatId, '请提供演员关键词');
-
-  try {
-    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { params: { keyword, magnet: 'all' } });
-    const movies = data.movies || [];
-    if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
-
-    const actorMap = new Map();
-    movies.forEach(movie => {
-      movie.stars?.forEach(star => {
-        if (star.name.includes(keyword)) {
-          actorMap.set(star.id, star.name);
-        }
-      });
-    });
-
-    if (actorMap.size === 0) return bot.sendMessage(chatId, '未找到相关演员');
-
-    let message = `搜索关键词: ${keyword} 的演员列表:\n`;
-    actorMap.forEach((name, id) => {
-      message += `\n姓名: ${name}\n编号: ${id}\n`;
-    });
-
-    bot.sendMessage(chatId, message);
-  } catch (err) {
-    console.error('[ERROR] /starsearch 调用 API 出错:', err.message);
-    bot.sendMessage(chatId, '搜索演员出错，请稍后重试');
-  }
-});
-
-// /star
+// /star 指令（演员详情）
 bot.onText(/\/star (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const starId = match[1].trim();
@@ -176,20 +138,15 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
     const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
     const name = star.name || 'N/A';
     const birthday = star.birthday || 'N/A';
-    const age = star.age || 'N/A';
     const height = star.height || 'N/A';
-    const bust = star.bust || 'N/A';
-    const waistline = star.waistline || 'N/A';
-    const hipline = star.hipline || 'N/A';
-    const hobby = star.hobby || 'N/A';
+    const measurements = `${star.bust || ''}-${star.waistline || ''}-${star.hipline || ''}` || 'N/A';
     const image = star.avatar || null;
 
     let message = `
 【姓名】 ${name}
-【生日】 ${birthday} (${age}岁)
+【生日】 ${birthday}
 【身高】 ${height}
-【三围】 ${bust}-${waistline}-${hipline}
-【爱好】 ${hobby}
+【三围】 ${measurements}
 【编号】 ${starId}
 `;
 
@@ -204,7 +161,58 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
   }
 });
 
-// /starpage
+// /starsearch 指令（关键词搜索演员）
+bot.onText(/\/starsearch (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const keyword = match[1].trim();
+  if (!keyword) return bot.sendMessage(chatId, '请提供演员关键词，例如: /starsearch 三上');
+
+  try {
+    // 调用影片搜索接口
+    const data = await sendRequest(`${API_BASE_URL}/movies/search`, { 
+      params: { keyword, magnet: 'all' } 
+    });
+
+    const movies = data.movies || [];
+    if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
+
+    // 收集演员并去重：先看 stars 字段，如果为空则从 title 中提取
+    const actorMap = new Map();
+    movies.forEach(movie => {
+      if (movie.stars && movie.stars.length > 0) {
+        movie.stars.forEach(star => {
+          if (star.name.includes(keyword)) {
+            actorMap.set(star.id, star.name);
+          }
+        });
+      } else {
+        // 从 title 中匹配演员名
+        const regex = new RegExp(keyword, 'g');
+        const matches = movie.title.match(regex);
+        if (matches) {
+          // 用 title 中关键词做 name，id 用 movieId + 名称做简化
+          const id = `${movie.id}_${keyword}`;
+          actorMap.set(id, keyword);
+        }
+      }
+    });
+
+    if (actorMap.size === 0) return bot.sendMessage(chatId, '未找到相关演员');
+
+    let message = `搜索关键词: ${keyword} 的演员列表:\n`;
+    actorMap.forEach((name, id) => {
+      message += `\n姓名: ${name}\n编号: ${id}\n`;
+    });
+
+    bot.sendMessage(chatId, message);
+
+  } catch (err) {
+    console.error('[ERROR] /starsearch 调用 API 出错:', err.message);
+    bot.sendMessage(chatId, '搜索演员出错，请稍后重试');
+  }
+});
+
+// /starpage 指令（演员影片列表）
 bot.onText(/\/starpage (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const [starId, page = 1] = match[1].split(' ');
@@ -219,7 +227,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
 
     let message = `演员 ${starId} 的影片列表（第 ${page} 页）:\n`;
     movies.forEach(m => {
-      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.date}\n`;
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n`;
     });
     bot.sendMessage(chatId, message);
   } catch (err) {
@@ -228,7 +236,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
   }
 });
 
-// /latest
+// /latest 指令（最新影片）
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
   try {
@@ -286,7 +294,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// 未识别命令
+// 未识别命令提示
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
   if (!msg.text.startsWith('/')) {
