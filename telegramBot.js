@@ -95,15 +95,22 @@ bot.onText(/\/id (.+)/, async (msg, match) => {
 【标签】 <code>${tags}</code>
 `;
 
-    // 获取磁力链接
+    // 获取磁力链接（需要 gid 和 uc 参数）
     try {
-      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`);
-      if (magnets && magnets.length > 0) {
-        magnets.slice(0, 3).forEach((m, idx) => {
-          message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
+      if (movie.gid && movie.uc) {
+        const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}`, {
+          params: { gid: movie.gid, uc: movie.uc }
         });
+
+        if (magnets && magnets.length > 0) {
+          magnets.slice(0, 3).forEach((m, idx) => {
+            message += `【磁力链接 ${idx + 1}】 <code>${m.link}</code>\n`;
+          });
+        } else {
+          message += '【磁力】 无可用磁力链接\n';
+        }
       } else {
-        message += '【磁力】 无可用磁力链接\n';
+        message += '【磁力】 无法获取磁力链接参数\n';
       }
     } catch (err) {
       message += '【磁力】 获取磁力链接出错\n';
@@ -139,18 +146,16 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
     const name = star.name || 'N/A';
     const birthday = star.birthday || 'N/A';
     const height = star.height || 'N/A';
-    const bust = star.bust || 'N/A';
-    const waistline = star.waistline || 'N/A';
-    const hipline = star.hipline || 'N/A';
-    const hobbies = star.hobby || 'N/A';
+    const measurements = `${star.bust || '-'}-${star.waistline || '-'}-${star.hipline || '-'}`;
+    const aliases = star.aliases?.join(', ') || 'N/A';
     const image = star.avatar || null;
 
     let message = `
 【姓名】 ${name}
 【生日】 ${birthday}
 【身高】 ${height}
-【三围】 ${bust}/${waistline}/${hipline}
-【爱好】 ${hobbies}
+【三围】 ${measurements}
+【别名】 ${aliases}
 【编号】 ${starId}
 `;
 
@@ -165,7 +170,7 @@ bot.onText(/\/star (.+)/, async (msg, match) => {
   }
 });
 
-// /starsearch 指令（关键词搜索演员，使用真实演员 ID）
+// /starsearch 指令（关键词搜索演员）
 bot.onText(/\/starsearch (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const keyword = match[1].trim();
@@ -179,16 +184,14 @@ bot.onText(/\/starsearch (.+)/, async (msg, match) => {
     const movies = data.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, '未找到相关影片或演员');
 
-    // 收集演员并去重，保证使用真实 ID
+    // 收集演员并去重，只保留名字包含关键词的
     const actorMap = new Map();
     movies.forEach(movie => {
-      if (movie.stars && movie.stars.length > 0) {
-        movie.stars.forEach(star => {
-          if (star.name.includes(keyword)) {
-            actorMap.set(star.id, star.name); // 使用真实演员 ID
-          }
-        });
-      }
+      movie.title.split(/[\s、,]/).forEach(name => {
+        if (name.includes(keyword)) {
+          actorMap.set(`${movie.id}_${name}`, name);
+        }
+      });
     });
 
     if (actorMap.size === 0) return bot.sendMessage(chatId, '未找到相关演员');
@@ -221,7 +224,7 @@ bot.onText(/\/starpage (.+)/, async (msg, match) => {
 
     let message = `演员 ${starId} 的影片列表（第 ${page} 页）:\n`;
     movies.forEach(m => {
-      message += `\n标题: ${m.title}\n编号: ${m.id}\n日期: ${m.date}\n`;
+      message += `\n标题: ${m.title}\n编号: ${m.id}\n`;
     });
     bot.sendMessage(chatId, message);
   } catch (err) {
