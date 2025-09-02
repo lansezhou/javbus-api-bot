@@ -21,22 +21,38 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3. 构建 Docker 镜像
+      # 3. 获取最新版本号并生成新版本号
+      - name: Determine new version
+        id: version
+        run: |
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/javbus-bot"
+          # 获取已有标签并按小数点排序
+          TAG=$(curl -s "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_USERNAME }}/javbus-bot/tags?page_size=100" \
+                 | jq -r '.results[].name' \
+                 | grep -E '^[0-9]+\.[0-9]+$' \
+                 | sort -V \
+                 | tail -n1)
+          
+          if [ -z "$TAG" ]; then
+            NEW_TAG="0.1"
+          else
+            MAJOR=$(echo $TAG | cut -d. -f1)
+            MINOR=$(echo $TAG | cut -d. -f2)
+            MINOR=$((MINOR + 1))
+            NEW_TAG="${MAJOR}.${MINOR}"
+          fi
+
+          echo "New version: $NEW_TAG"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # 4. 构建 Docker 镜像并打两个标签（版本号 + latest）
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/javbus-bot:latest .
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/javbus-bot:${{ steps.version.outputs.tag }} \
+                       -t ${{ secrets.DOCKER_USERNAME }}/javbus-bot:latest .
 
-      # 4. 推送到 Docker Hub
+      # 5. 推送到 Docker Hub（版本号 + latest）
       - name: Push Docker image
         run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/javbus-bot:${{ steps.version.outputs.tag }}
           docker push ${{ secrets.DOCKER_USERNAME }}/javbus-bot:latest
-
-
-
-
-
-
-
-
-
-
