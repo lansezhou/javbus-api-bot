@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 
 // 环境变量检查
 if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID) {
@@ -11,6 +12,7 @@ if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID
 
 const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
+const CF_URL = process.env.CF_URL || null;
 
 // 临时文件目录
 const TMP_DIR = path.join(__dirname, 'tmp');
@@ -75,6 +77,24 @@ async function downloadAndSendPhoto(chatId, url, caption = null) {
 
   } catch (err) {
     console.error(`[ERROR] 下载并发送图片失败: ${url}`, err.message);
+  }
+}
+
+// 发送图片函数（支持 CF_URL 替换 + 兜底下载）
+async function sendPhotoWithCF(chatId, url, caption = null) {
+  let sendUrl = url;
+  try {
+    if (CF_URL && url.includes('www.javbus.com')) {
+      sendUrl = url.replace('https://www.javbus.com', CF_URL.replace(/\/$/, ''));
+    }
+    if (caption) {
+      await bot.sendPhoto(chatId, sendUrl, { caption, parse_mode: 'HTML' });
+    } else {
+      await bot.sendPhoto(chatId, sendUrl);
+    }
+  } catch (err) {
+    console.warn(`[WARN] 发送图片失败 ${sendUrl}，尝试下载发送: ${err.message}`);
+    await downloadAndSendPhoto(chatId, url, caption);
   }
 }
 
@@ -182,12 +202,7 @@ bot.on('callback_query', async (query) => {
       } catch (err) {
         console.warn('[WARN] sendMediaGroup 发送失败，尝试逐张发送');
         for (const s of samples) {
-          try {
-            await bot.sendPhoto(chatId, s.src);
-          } catch (e) {
-            console.error(`[ERROR] 发送单张截图失败: ${s.src}`, e.message);
-            await downloadAndSendPhoto(chatId, s.src);
-          }
+          await sendPhotoWithCF(chatId, s.src);
         }
       }
 
@@ -214,12 +229,7 @@ bot.on('callback_query', async (query) => {
     try {
       const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
       if (star?.avatar) {
-        try {
-          await bot.sendPhoto(chatId, star.avatar, { caption: `👩 ${star.name}`, parse_mode: 'HTML' });
-        } catch (e) {
-          console.error(`[ERROR] 发送女优头像失败: ${star.avatar}`, e.message);
-          await downloadAndSendPhoto(chatId, star.avatar, `👩 ${star.name}`);
-        }
+        await sendPhotoWithCF(chatId, star.avatar, `👩 ${star.name}`);
       } else {
         await bot.sendMessage(chatId, '未找到女优头像');
       }
@@ -336,12 +346,7 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
     if (movie.tags?.length) caption += `标签: ${movie.tags.join(', ')}\n`;
 
     if (movie.img) {
-      try {
-        await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
-      } catch (e) {
-        console.error(`[ERROR] 发送影片封面失败: ${movie.img}`, e.message);
-        await downloadAndSendPhoto(chatId, movie.img, caption);
-      }
+      await sendPhotoWithCF(chatId, movie.img, caption);
     } else {
       await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
     }
