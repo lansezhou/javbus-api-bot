@@ -186,6 +186,155 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
   }
 });
 
+// /stars 命令
+bot.onText(/\/stars (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
+  const keyword = match[1].trim();
+  await sendStarsPage(chatId, keyword, 1);
+});
+
+// /latest 命令（分页按钮列表）
+bot.onText(/\/latest/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
+  console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
+  await sendLatestPage(chatId, 1);
+});
+
+// 分页函数：/stars
+async function sendStarsPage(chatId, keyword, page, callbackId) {
+  try {
+    const res = await sendRequest(`${API_BASE_URL}/movies/search?keyword=${encodeURIComponent(keyword)}`);
+    const movies = res.movies || [];
+    if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
+
+    const pageSize = 20;
+    const start = (page - 1) * pageSize;
+    const results = movies.slice(start, start + pageSize);
+    if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
+
+    const keyboard = results.map(movie => ([{
+      text: `${movie.title} (${movie.id})`,
+      callback_data: `star_movie_${movie.id}`
+    }]));
+
+    if (movies.length > start + pageSize) {
+      keyboard.push([{ text: '下一页', callback_data: `stars_page_${encodeURIComponent(keyword)}_${page + 1}` }]);
+    }
+
+    await bot.sendMessage(chatId, `🔍 搜索女优: ${keyword} (第${page}页)`, {
+      reply_markup: { inline_keyboard: keyboard }
+    });
+
+    if (callbackId) await bot.answerCallbackQuery(callbackId);
+  } catch (err) {
+    console.error('[ERROR] 搜索女优失败:', err.message);
+    await bot.sendMessage(chatId, `搜索女优「${keyword}」出错`);
+  }
+}
+
+// 分页函数：/latest
+async function sendLatestPage(chatId, page, callbackId) {
+  try {
+    const data = await sendRequest(`${API_BASE_URL}/movies?page=1`);
+    const movies = data.movies || [];
+    if (!movies.length) {
+      await bot.sendMessage(chatId, '未找到最新影片');
+      return;
+    }
+
+    const pageSize = 15;
+    const start = (page - 1) * pageSize;
+    const results = movies.slice(start, start + pageSize);
+    if (!results.length) {
+      await bot.sendMessage(chatId, '没有更多结果了');
+      return;
+    }
+
+    const keyboard = results.map(movie => ([{
+      text: `${movie.title} (${movie.id})`,
+      callback_data: `latest_movie_${movie.id}`
+    }]));
+
+    if (movies.length > start + pageSize) {
+      keyboard.push([{ text: '下一页', callback_data: `latest_page_${page + 1}` }]);
+    }
+
+    await bot.sendMessage(chatId, `📢 最新影片 (第${page}页)`, {
+      reply_markup: { inline_keyboard: keyboard }
+    });
+
+    if (callbackId) await bot.answerCallbackQuery(callbackId);
+  } catch (err) {
+    console.error(`[ERROR] 获取最新影片失败: ${err.message}`);
+    await bot.sendMessage(chatId, '获取最新影片出错');
+    if (callbackId) await bot.answerCallbackQuery(callbackId);
+  }
+}
+
+// 点击按钮显示影片封面 + 详情 + 磁力链接
+async function sendMovieDetail(chatId, movieId, callbackId) {
+  try {
+    const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
+    if (!movie) {
+      await bot.sendMessage(chatId, '未找到影片信息');
+      return;
+    }
+
+    let caption = `🎬 <b>${movie.title}</b>\n编号: <code>${movie.id}</code>\n日期: ${movie.date || 'N/A'}\n`;
+    if (movie.tags?.length) caption += `标签: ${movie.tags.join(', ')}\n`;
+
+    if (movie.img) {
+      await sendPhotoWithCF(chatId, movie.img, caption);
+    } else {
+      await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
+    }
+
+    // 样品截图按钮
+    if (movie.samples?.length > 0) {
+      await bot.sendMessage(chatId, '还有更多截图，可使用按钮查看', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '查看截图', callback_data: `sample_${movieId}_0` }]]
+        }
+      });
+    }
+
+    // 磁力链接板块
+    try {
+      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
+      if (magnets?.length) {
+        let magnetMsg = '🧲 <b>磁力链接:</b>\n';
+        magnets.slice(0, 5).forEach((m, idx) => {
+          magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
+        });
+        await bot.sendMessage(chatId, magnetMsg, { parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, '🧲 未找到磁力链接');
+      }
+    } catch (err) {
+      console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
+      await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
+    }
+
+    if (callbackId) await bot.answerCallbackQuery(callbackId);
+  } catch (err) {
+    console.error('[ERROR] 获取影片详情失败:', err.message);
+    await bot.sendMessage(chatId, '获取影片详情失败');
+    if (callbackId) await bot.answerCallbackQuery(callbackId);
+  }
+}
+
 // callback_query 处理
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
@@ -277,137 +426,19 @@ bot.on('callback_query', async (query) => {
     const movieId = data.replace('star_movie_', '');
     await sendMovieDetail(chatId, movieId, query.id);
   }
-});
 
-// /latest 命令
-bot.onText(/\/latest/, async (msg) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id;
-  if (!checkPermission(userId)) {
-    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
-    return;
+  // 最新影片详情按钮
+  if (data.startsWith('latest_movie_')) {
+    const movieId = data.replace('latest_movie_', '');
+    await sendMovieDetail(chatId, movieId, query.id);
   }
 
-  console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
-
-  try {
-    const data = await sendRequest(`${API_BASE_URL}/movies?page=1`);
-    const movies = data.movies || [];
-    if (!movies.length) {
-      await bot.sendMessage(chatId, '未找到最新影片');
-      return;
-    }
-
-    const latest = movies.slice(0, 15);
-    for (const movie of latest) {
-      let text = `🎬 <b>${movie.title}</b>\n`;
-      text += `编号: <code>${movie.id}</code>\n`;
-      text += `日期: ${movie.date || 'N/A'}\n`;
-      if (movie.tags?.length) text += `标签: ${movie.tags.join(', ')}\n`;
-      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
-    }
-  } catch (err) {
-    console.error(`[ERROR] 获取最新影片失败: ${err.message}`);
-    await bot.sendMessage(chatId, '获取最新影片出错');
+  // 最新影片分页按钮
+  if (data.startsWith('latest_page_')) {
+    const page = parseInt(data.replace('latest_page_', ''));
+    await sendLatestPage(chatId, page, query.id);
   }
 });
-
-// /stars 命令
-bot.onText(/\/stars (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id;
-  if (!checkPermission(userId)) {
-    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
-    return;
-  }
-
-  const keyword = match[1].trim();
-  await sendStarsPage(chatId, keyword, 1);
-});
-
-// 分页函数
-async function sendStarsPage(chatId, keyword, page, callbackId) {
-  try {
-    const res = await sendRequest(`${API_BASE_URL}/movies/search?keyword=${encodeURIComponent(keyword)}`);
-    const movies = res.movies || [];
-    if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
-
-    const pageSize = 20;
-    const start = (page - 1) * pageSize;
-    const results = movies.slice(start, start + pageSize);
-    if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
-
-    const keyboard = results.map(movie => ([{
-      text: `${movie.title} (${movie.id})`,
-      callback_data: `star_movie_${movie.id}`
-    }]));
-
-    if (movies.length > start + pageSize) {
-      keyboard.push([{ text: '下一页', callback_data: `stars_page_${encodeURIComponent(keyword)}_${page + 1}` }]);
-    }
-
-    await bot.sendMessage(chatId, `🔍 搜索女优: ${keyword} (第${page}页)`, {
-      reply_markup: { inline_keyboard: keyboard }
-    });
-
-    if (callbackId) await bot.answerCallbackQuery(callbackId);
-  } catch (err) {
-    console.error('[ERROR] 搜索女优失败:', err.message);
-    await bot.sendMessage(chatId, `搜索女优「${keyword}」出错`);
-  }
-}
-
-// 点击按钮显示影片封面 + 详情 + 磁力链接
-async function sendMovieDetail(chatId, movieId, callbackId) {
-  try {
-    const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
-    if (!movie) {
-      await bot.sendMessage(chatId, '未找到影片信息');
-      return;
-    }
-
-    let caption = `🎬 <b>${movie.title}</b>\n编号: <code>${movie.id}</code>\n日期: ${movie.date || 'N/A'}\n`;
-    if (movie.tags?.length) caption += `标签: ${movie.tags.join(', ')}\n`;
-
-    if (movie.img) {
-      await sendPhotoWithCF(chatId, movie.img, caption);
-    } else {
-      await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
-    }
-
-    // 样品截图按钮
-    if (movie.samples?.length > 0) {
-      await bot.sendMessage(chatId, '还有更多截图，可使用按钮查看', {
-        reply_markup: {
-          inline_keyboard: [[{ text: '查看截图', callback_data: `sample_${movieId}_0` }]]
-        }
-      });
-    }
-
-    // 磁力链接板块
-    try {
-      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
-      if (magnets?.length) {
-        let magnetMsg = '🧲 <b>磁力链接:</b>\n';
-        magnets.slice(0, 5).forEach((m, idx) => {
-          magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
-        });
-        await bot.sendMessage(chatId, magnetMsg, { parse_mode: 'HTML' });
-      } else {
-        await bot.sendMessage(chatId, '🧲 未找到磁力链接');
-      }
-    } catch (err) {
-      console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
-      await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
-    }
-
-    if (callbackId) await bot.answerCallbackQuery(callbackId);
-  } catch (err) {
-    console.error('[ERROR] 获取影片详情失败:', err.message);
-    await bot.sendMessage(chatId, '获取影片详情失败');
-    if (callbackId) await bot.answerCallbackQuery(callbackId);
-  }
-}
 
 // /help 命令
 bot.onText(/\/help/, (msg) => {
@@ -420,7 +451,7 @@ bot.onText(/\/help/, (msg) => {
 
   const helpMessage = `可用命令:
   /c [番号] - 查询影片详细信息、磁力链接及样品截图
-  /latest - 获取最新的15个影片
+  /latest - 获取最新影片（分页按钮列表，点击显示详情）
   /stars [女优名] - 根据女优名字搜索影片（显示按钮列表，点击显示封面+详情+磁力链接）
   /help - 查看本帮助`;
   bot.sendMessage(chatId, helpMessage);
