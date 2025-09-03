@@ -14,6 +14,13 @@ requiredEnv.forEach(key => {
   else console.log(`[INFO] 环境变量 ${key} = ${process.env[key]}`);
 });
 
+// CF_URL 可选
+if (process.env.CF_URL) {
+  console.log(`[INFO] 可选环境变量 CF_URL = ${process.env.CF_URL}`);
+} else {
+  console.log('[INFO] 可选环境变量 CF_URL 未设置，将使用原站 URL 发送图片');
+}
+
 if (missingEnv.length) {
   console.error(`[ERROR] 缺少必要环境变量: ${missingEnv.join(', ')}`);
   process.exit(1);
