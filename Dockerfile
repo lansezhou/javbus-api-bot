@@ -5,6 +5,7 @@ FROM node:20-alpine
 ENV TG_BOT_TOKEN=123456789:xxxxxxxxxxxxxxxxxxxxxx
 ENV API_BASE_URL=https://xyz.xyz.xyz/api
 ENV PORT=3033
+ENV TG_ID=xxxxx
 
 # 创建工作目录
 WORKDIR /usr/src/app
