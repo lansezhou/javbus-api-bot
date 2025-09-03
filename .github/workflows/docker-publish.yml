@@ -25,9 +25,9 @@ jobs:
       - name: Determine new version
         id: version
         run: |
-          IMAGE="${{ secrets.DOCKER_USERNAME }}/javbus-bot"
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/adult-bot"
           # 获取已有标签并按小数点排序
-          TAG=$(curl -s "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_USERNAME }}/javbus-bot/tags?page_size=100" \
+          TAG=$(curl -s "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_USERNAME }}/adult-bot/tags?page_size=10" \
                  | jq -r '.results[].name' \
                  | grep -E '^[0-9]+\.[0-9]+$' \
                  | sort -V \
@@ -48,11 +48,11 @@ jobs:
       # 4. 构建 Docker 镜像并打两个标签（版本号 + latest）
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/javbus-bot:${{ steps.version.outputs.tag }} \
-                       -t ${{ secrets.DOCKER_USERNAME }}/javbus-bot:latest .
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/adult-bot:${{ steps.version.outputs.tag }} \
+                       -t ${{ secrets.DOCKER_USERNAME }}/adult-bot:latest .
 
       # 5. 推送到 Docker Hub（版本号 + latest）
       - name: Push Docker image
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/javbus-bot:${{ steps.version.outputs.tag }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/javbus-bot:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/adult-bot:${{ steps.version.outputs.tag }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/adult-bot:latest
