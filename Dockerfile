@@ -23,4 +23,4 @@ COPY . .
 EXPOSE ${PORT}
 
 # 启动 Bot
-CMD ["node", "index.js"]
+CMD ["sh", "-c", "mkdir -p /log && node index.js >> /log/bot.log 2>&1"]
