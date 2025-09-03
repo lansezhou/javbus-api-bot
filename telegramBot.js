@@ -4,11 +4,21 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-// 环境变量检查
-if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID) {
-  console.error('错误: 请设置 TG_BOT_TOKEN、API_BASE_URL 和 TG_ID 环境变量');
+// ================= 启动环境变量检测 =================
+console.log('===== 启动环境变量检测 =====');
+const requiredEnv = ['TG_BOT_TOKEN', 'API_BASE_URL', 'TG_ID'];
+let missingEnv = [];
+
+requiredEnv.forEach(key => {
+  if (!process.env[key]) missingEnv.push(key);
+  else console.log(`[INFO] 环境变量 ${key} = ${process.env[key]}`);
+});
+
+if (missingEnv.length) {
+  console.error(`[ERROR] 缺少必要环境变量: ${missingEnv.join(', ')}`);
   process.exit(1);
 }
+console.log('=============================');
 
 const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
@@ -65,6 +75,8 @@ async function downloadAndSendPhoto(chatId, url, caption = null) {
       await bot.sendPhoto(chatId, filePath);
     }
 
+    console.log(`[INFO] 已通过下载发送图片: ${url}`);
+
     // 12小时后删除文件
     setTimeout(() => {
       if (fs.existsSync(filePath)) {
@@ -86,7 +98,11 @@ async function sendPhotoWithCF(chatId, url, caption = null) {
   try {
     if (CF_URL && url.includes('www.javbus.com')) {
       sendUrl = url.replace('https://www.javbus.com', CF_URL.replace(/\/$/, ''));
+      console.log(`[INFO] 发送图片使用 CF_URL 替换: ${sendUrl}`);
+    } else {
+      console.log(`[INFO] 发送图片使用原站 URL: ${sendUrl}`);
     }
+
     if (caption) {
       await bot.sendPhoto(chatId, sendUrl, { caption, parse_mode: 'HTML' });
     } else {
@@ -199,6 +215,7 @@ bot.on('callback_query', async (query) => {
       try {
         const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
         await bot.sendMediaGroup(chatId, mediaGroup);
+        console.log(`[INFO] 发送截图组: ${samples.map(s => s.src).join(', ')}`);
       } catch (err) {
         console.warn('[WARN] sendMediaGroup 发送失败，尝试逐张发送');
         for (const s of samples) {
