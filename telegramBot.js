@@ -209,7 +209,7 @@ async function sendStarsPage(chatId, keyword, page, callbackId) {
     const movies = res.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
 
-    const pageSize = 10; // 改为每页10条
+    const pageSize = 10; // 每页10条
     const start = (page - 1) * pageSize;
     const results = movies.slice(start, start + pageSize);
     if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
@@ -234,7 +234,7 @@ async function sendStarsPage(chatId, keyword, page, callbackId) {
   }
 }
 
-// 点击按钮显示影片封面 + 详情
+// 点击按钮显示影片封面 + 详情 + 磁力链接
 async function sendMovieDetail(chatId, movieId, callbackId) {
   try {
     const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
@@ -261,6 +261,23 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
       });
     }
 
+    // 磁力链接板块
+    try {
+      const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
+      if (magnets && magnets.length > 0) {
+        let magnetMsg = '🧲 <b>磁力链接:</b>\n';
+        magnets.slice(0, 5).forEach((m, idx) => {
+          magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
+        });
+        await bot.sendMessage(chatId, magnetMsg, { parse_mode: 'HTML' });
+      } else {
+        await bot.sendMessage(chatId, '🧲 未找到磁力链接');
+      }
+    } catch (err) {
+      console.error(`[ERROR] 获取磁力链接失败: ${err.message}`);
+      await bot.sendMessage(chatId, '🧲 获取磁力链接出错');
+    }
+
     if (callbackId) await bot.answerCallbackQuery(callbackId);
   } catch (err) {
     console.error('[ERROR] 获取影片详情失败:', err.message);
@@ -275,7 +292,7 @@ bot.onText(/\/help/, (msg) => {
   const helpMessage = `可用命令:
   /c [番号] - 查询影片详细信息、磁力链接及样品截图
   /latest - 获取最新的15个影片
-  /stars [女优名] - 根据女优名字搜索影片（显示按钮列表，点击显示封面+详情）
+  /stars [女优名] - 根据女优名字搜索影片（显示按钮列表，点击显示封面+详情+磁力链接）
   /help - 查看本帮助`;
   bot.sendMessage(chatId, helpMessage);
 });
