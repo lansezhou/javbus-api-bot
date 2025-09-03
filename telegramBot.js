@@ -45,7 +45,16 @@ async function downloadAndSendPhoto(chatId, url, caption = null) {
     const filename = path.basename(new URL(url).pathname);
     const filePath = path.join(TMP_DIR, filename);
 
-    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.1 Safari/537.36',
+        'Referer': 'https://www.javbus.com/',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+      }
+    });
     fs.writeFileSync(filePath, response.data);
 
     if (caption) {
