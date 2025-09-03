@@ -133,9 +133,27 @@ bot.on('callback_query', async (query) => {
         return;
       }
 
-      const samples = movie.samples.slice(startIndex, endIndex);
-      const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
-      await bot.sendMediaGroup(chatId, mediaGroup);
+      // ✅ 过滤无效 URL 并确保 media 为字符串
+      const samples = movie.samples.slice(startIndex, endIndex).filter(s => s.src && typeof s.src === 'string');
+      if (samples.length === 0) {
+        await bot.sendMessage(chatId, '没有可用的截图');
+        return;
+      }
+
+      // 尝试发送截图，失败可重试一次
+      try {
+        const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
+        await bot.sendMediaGroup(chatId, mediaGroup);
+      } catch (err) {
+        console.warn('[WARN] sendMediaGroup 发送失败，尝试使用 sendPhoto 单张发送');
+        for (const s of samples) {
+          try {
+            await bot.sendPhoto(chatId, s.src);
+          } catch (e) {
+            console.error(`[ERROR] 发送单张截图失败: ${s.src}`, e.message);
+          }
+        }
+      }
 
       if (endIndex < movie.samples.length) {
         await bot.sendMessage(chatId, '查看更多截图', {
