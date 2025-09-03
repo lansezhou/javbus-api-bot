@@ -1,5 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 // 环境变量检查
 if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID) {
@@ -9,6 +11,12 @@ if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID
 
 const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
+
+// 临时文件目录
+const TMP_DIR = path.join(__dirname, 'tmp');
+if (!fs.existsSync(TMP_DIR)) {
+  fs.mkdirSync(TMP_DIR);
+}
 
 // 白名单检查函数
 function checkPermission(userId) {
@@ -28,6 +36,36 @@ async function sendRequest(url, options = {}) {
   } catch (error) {
     console.error(`[ERROR] 请求 ${url} 出错:`, error.message);
     throw error;
+  }
+}
+
+// 下载并发送图片（兜底方案）
+async function downloadAndSendPhoto(chatId, url, caption = null) {
+  try {
+    const filename = path.basename(new URL(url).pathname);
+    const filePath = path.join(TMP_DIR, filename);
+
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+    fs.writeFileSync(filePath, response.data);
+
+    if (caption) {
+      await bot.sendPhoto(chatId, filePath, { caption, parse_mode: 'HTML' });
+    } else {
+      await bot.sendPhoto(chatId, filePath);
+    }
+
+    // 12小时后删除文件
+    setTimeout(() => {
+      if (fs.existsSync(filePath)) {
+        fs.unlink(filePath, err => {
+          if (err) console.error(`[WARN] 删除文件失败: ${filePath}`, err.message);
+          else console.log(`[INFO] 已删除临时文件: ${filePath}`);
+        });
+      }
+    }, 12 * 60 * 60 * 1000);
+
+  } catch (err) {
+    console.error(`[ERROR] 下载并发送图片失败: ${url}`, err.message);
   }
 }
 
@@ -53,10 +91,10 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     let message = `🎬 <b>${movie.title}</b>\n`;
     message += `编号: <code>${movie.id}</code>\n`;
     message += `日期: ${movie.date || 'N/A'}\n`;
-    if (movie.stars && movie.stars.length > 0) {
+    if (movie.stars?.length) {
       message += `演员: ${movie.stars.map(s => s.name).join(' | ')}\n`;
     }
-    if (movie.tags && movie.tags.length > 0) {
+    if (movie.tags?.length) {
       message += `标签: ${movie.tags.join(', ')}\n`;
     }
 
@@ -65,7 +103,7 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     // 获取磁力链接
     try {
       const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
-      if (magnets && magnets.length > 0) {
+      if (magnets?.length) {
         let magnetMsg = '🧲 <b>磁力链接:</b>\n';
         magnets.slice(0, 5).forEach((m, idx) => {
           magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
@@ -80,7 +118,7 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
     }
 
     // 样品截图按钮
-    if (movie.samples && movie.samples.length > 0) {
+    if (movie.samples?.length) {
       await bot.sendMessage(chatId, `还有更多截图，可使用按钮查看`, {
         reply_markup: {
           inline_keyboard: [
@@ -96,7 +134,7 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
   }
 });
 
-// 样品截图翻页 & 女优头像按钮
+// callback_query 处理
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const userId = query.from.id;
@@ -110,17 +148,12 @@ bot.on('callback_query', async (query) => {
   // 样品截图分页
   if (data.startsWith('sample_')) {
     const parts = data.split('_');
-    if (parts.length < 3) {
-      await bot.answerCallbackQuery(query.id, { text: '无效请求' });
-      return;
-    }
-
     const movieId = parts[1];
     const page = parseInt(parts[2]);
 
     try {
       const movie = await sendRequest(`${API_BASE_URL}/movies/${movieId}`);
-      if (!movie.samples || movie.samples.length === 0) {
+      if (!movie.samples?.length) {
         await bot.sendMessage(chatId, '没有可用的截图');
         return;
       }
@@ -128,29 +161,23 @@ bot.on('callback_query', async (query) => {
       const startIndex = page * 5;
       const endIndex = Math.min(startIndex + 5, movie.samples.length);
 
-      if (startIndex >= movie.samples.length) {
-        await bot.answerCallbackQuery(query.id, { text: '已经是最后一页' });
-        return;
-      }
-
-      // ✅ 过滤无效 URL 并确保 media 为字符串
-      const samples = movie.samples.slice(startIndex, endIndex).filter(s => s.src && typeof s.src === 'string');
-      if (samples.length === 0) {
+      const samples = movie.samples.slice(startIndex, endIndex).filter(s => s.src);
+      if (!samples.length) {
         await bot.sendMessage(chatId, '没有可用的截图');
         return;
       }
 
-      // 尝试发送截图，失败可重试一次
       try {
         const mediaGroup = samples.map(s => ({ type: 'photo', media: s.src }));
         await bot.sendMediaGroup(chatId, mediaGroup);
       } catch (err) {
-        console.warn('[WARN] sendMediaGroup 发送失败，尝试使用 sendPhoto 单张发送');
+        console.warn('[WARN] sendMediaGroup 发送失败，尝试逐张发送');
         for (const s of samples) {
           try {
             await bot.sendPhoto(chatId, s.src);
           } catch (e) {
             console.error(`[ERROR] 发送单张截图失败: ${s.src}`, e.message);
+            await downloadAndSendPhoto(chatId, s.src);
           }
         }
       }
@@ -177,8 +204,13 @@ bot.on('callback_query', async (query) => {
     const starId = data.replace('star_avatar_', '');
     try {
       const star = await sendRequest(`${API_BASE_URL}/stars/${starId}`);
-      if (star && star.avatar) {
-        await bot.sendPhoto(chatId, star.avatar, { caption: `👩 ${star.name}`, parse_mode: 'HTML' });
+      if (star?.avatar) {
+        try {
+          await bot.sendPhoto(chatId, star.avatar, { caption: `👩 ${star.name}`, parse_mode: 'HTML' });
+        } catch (e) {
+          console.error(`[ERROR] 发送女优头像失败: ${star.avatar}`, e.message);
+          await downloadAndSendPhoto(chatId, star.avatar, `👩 ${star.name}`);
+        }
       } else {
         await bot.sendMessage(chatId, '未找到女优头像');
       }
@@ -189,7 +221,7 @@ bot.on('callback_query', async (query) => {
     await bot.answerCallbackQuery(query.id);
   }
 
-  // /stars 分页回调
+  // /stars 分页
   if (data.startsWith('stars_page_')) {
     const parts = data.split('_');
     const keyword = decodeURIComponent(parts[2]);
@@ -197,7 +229,7 @@ bot.on('callback_query', async (query) => {
     await sendStarsPage(chatId, keyword, page, query.id);
   }
 
-  // /stars 影片详情按钮回调
+  // /stars 影片详情
   if (data.startsWith('star_movie_')) {
     const movieId = data.replace('star_movie_', '');
     await sendMovieDetail(chatId, movieId, query.id);
@@ -295,7 +327,12 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
     if (movie.tags?.length) caption += `标签: ${movie.tags.join(', ')}\n`;
 
     if (movie.img) {
-      await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
+      try {
+        await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
+      } catch (e) {
+        console.error(`[ERROR] 发送影片封面失败: ${movie.img}`, e.message);
+        await downloadAndSendPhoto(chatId, movie.img, caption);
+      }
     } else {
       await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
     }
@@ -312,7 +349,7 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
     // 磁力链接板块
     try {
       const magnets = await sendRequest(`${API_BASE_URL}/magnets/${movieId}?gid=${movie.gid}&uc=${movie.uc}`);
-      if (magnets && magnets.length > 0) {
+      if (magnets?.length) {
         let magnetMsg = '🧲 <b>磁力链接:</b>\n';
         magnets.slice(0, 5).forEach((m, idx) => {
           magnetMsg += `${idx + 1}️⃣ [${m.size}] \n<code>${m.link}</code>\n\n`;
