@@ -209,7 +209,7 @@ async function sendStarsPage(chatId, keyword, page, callbackId) {
     const movies = res.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
 
-    const pageSize = 10;
+    const pageSize = 10; // 改为每页10条
     const start = (page - 1) * pageSize;
     const results = movies.slice(start, start + pageSize);
     if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
@@ -246,7 +246,11 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
     let caption = `🎬 <b>${movie.title}</b>\n编号: <code>${movie.id}</code>\n日期: ${movie.date || 'N/A'}\n`;
     if (movie.tags?.length) caption += `标签: ${movie.tags.join(', ')}\n`;
 
-    await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
+    if (movie.img) {
+      await bot.sendPhoto(chatId, movie.img, { caption, parse_mode: 'HTML' });
+    } else {
+      await bot.sendMessage(chatId, caption, { parse_mode: 'HTML' });
+    }
 
     // 样品截图按钮
     if (movie.samples?.length > 0) {
@@ -256,9 +260,6 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
         }
       });
     }
-
-    // 磁力链接按钮（可选）
-    // await bot.sendMessage(chatId, '获取磁力链接请使用 /c ' + movieId);
 
     if (callbackId) await bot.answerCallbackQuery(callbackId);
   } catch (err) {
