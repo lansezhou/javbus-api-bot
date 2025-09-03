@@ -4,6 +4,9 @@
 [NSFW]一个查番号的电报机器人
 
 ### 部署与使用指南：javbus-api-bot
+自己fork项目文件构建镜像使用
+javbus-api：部署参考https://github.com/ovnrain/javbus-api
+
 # 功能介绍
 
 这个 Telegram 机器人主要功能包括：
