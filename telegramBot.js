@@ -209,7 +209,7 @@ async function sendStarsPage(chatId, keyword, page, callbackId) {
     const movies = res.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
 
-    const pageSize = 2;
+    const pageSize = 10;
     const start = (page - 1) * pageSize;
     const results = movies.slice(start, start + pageSize);
     if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
