@@ -2,13 +2,19 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
 // 环境变量检查
-if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL) {
-  console.error('错误: 请设置TG_BOT_TOKEN和API_BASE_URL环境变量');
+if (!process.env.TG_BOT_TOKEN || !process.env.API_BASE_URL || !process.env.TG_ID) {
+  console.error('错误: 请设置 TG_BOT_TOKEN、API_BASE_URL 和 TG_ID 环境变量');
   process.exit(1);
 }
 
 const bot = new TelegramBot(process.env.TG_BOT_TOKEN, { polling: true });
 const API_BASE_URL = process.env.API_BASE_URL;
+
+// 白名单检查函数
+function checkPermission(userId) {
+  const allowedIds = process.env.TG_ID.split(',').map(id => id.trim());
+  return allowedIds.includes(userId.toString());
+}
 
 // 发送请求的函数
 async function sendRequest(url, options = {}) {
@@ -28,6 +34,12 @@ async function sendRequest(url, options = {}) {
 // /c 命令: 查询影片信息
 bot.onText(/\/c (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
   const movieId = match[1].trim();
   console.log(`[INFO] 用户 ${msg.from.username} 查询番号: ${movieId}`);
 
@@ -87,6 +99,12 @@ bot.onText(/\/c (.+)/, async (msg, match) => {
 // 样品截图翻页 & 女优头像按钮
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
+  const userId = query.from.id;
+  if (!checkPermission(userId)) {
+    await bot.answerCallbackQuery(query.id, { text: '❌ 你没有权限使用此机器人', show_alert: true });
+    return;
+  }
+
   const data = query.data;
 
   // 样品截图分页
@@ -171,6 +189,12 @@ bot.on('callback_query', async (query) => {
 // /latest 命令
 bot.onText(/\/latest/, async (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
   console.log(`[INFO] 用户 ${msg.from.username} 请求最新影片`);
 
   try {
@@ -195,21 +219,27 @@ bot.onText(/\/latest/, async (msg) => {
   }
 });
 
-// /stars 命令（显示按钮列表，点击显示封面 + 详情）
+// /stars 命令
 bot.onText(/\/stars (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
   const keyword = match[1].trim();
   await sendStarsPage(chatId, keyword, 1);
 });
 
-// 分页函数，显示按钮列表
+// 分页函数
 async function sendStarsPage(chatId, keyword, page, callbackId) {
   try {
     const res = await sendRequest(`${API_BASE_URL}/movies/search?keyword=${encodeURIComponent(keyword)}`);
     const movies = res.movies || [];
     if (!movies.length) return bot.sendMessage(chatId, `没有找到女优「${keyword}」的影片。`);
 
-    const pageSize = 10; // 每页10条
+    const pageSize = 20;
     const start = (page - 1) * pageSize;
     const results = movies.slice(start, start + pageSize);
     if (!results.length) return bot.sendMessage(chatId, '没有更多结果了');
@@ -289,6 +319,12 @@ async function sendMovieDetail(chatId, movieId, callbackId) {
 // /help 命令
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (!checkPermission(userId)) {
+    bot.sendMessage(chatId, '❌ 你没有权限使用此机器人');
+    return;
+  }
+
   const helpMessage = `可用命令:
   /c [番号] - 查询影片详细信息、磁力链接及样品截图
   /latest - 获取最新的15个影片
